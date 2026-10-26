@@ -377,8 +377,7 @@ isto zaglavlje) na stagingu radi testna skripta, a sam skill se provjerava na pr
 
 ## 9. Izvan opsega
 
-- Masovno ažuriranje postojećih agenata. Ako se jednom poželi, ide u valovima (6.3) i završava zamjenom javnog
-  `Remotely-Win10-*.zip` novim paketom.
+- Masovno ažuriranje postojećih agenata. Postupak za kasnije je u prilogu A.
 - Prelazak na upstream 2024 i njegove mogućnosti.
 - Remote file explorer. Moguć je kao zaseban projekt iznad izvršavanja PowerShella i postojećeg relaya,
   neovisno o verziji Remotelyja.
@@ -398,3 +397,57 @@ isto zaglavlje) na stagingu radi testna skripta, a sam skill se provjerava na pr
 - Testna kopija Operative s `config.ini` usmjerenim na staging.
 - Dogovoren termin izvan radnog vremena za korak 1.
 - Za korak 2: izgradnja i objava nove verzije Tokmaka. Check-in u TFVC radi korisnik.
+
+## Prilog A: ažuriranje cijele flote (budući posao, nije dio ovog projekta)
+
+Ovaj prilog zapisuje postupak za slučaj da jednom odlučimo ažurirati sve postojeće agente. Ne traži nikakav
+dodatni kod na serveru, jer koristi postojeći mehanizam ažuriranja i installer s automatskim povratkom.
+
+**Preduvjet:** novi agent je dokazan u radu kroz nove instalacije (korak 2) i pojedinačna ažuriranja (6.3).
+
+### A.1 Valovi na odabranim strojevima
+
+1. Skill na odabranim strojevima pokreće skriptu koja:
+   - preuzme paket s `http://integrator.hr/tokmak/exe/` i provjeri mu SHA-256;
+   - pokrene `Remotely_Installer.exe -install -quiet -path <paket> -serverurl https://remote.integrator.hr -organizationid <OrganizationID>`
+     kao odvezani proces. `<OrganizationID>` se čita iz `ConnectionInfo.json` tog stroja.
+2. Redoslijed valova: ~10 strojeva, zatim ~100 raznih (Windows 10 i 11, Windows Server, x86), zatim po potrebi
+   još jedan veći val.
+3. **Kriterij za nastavak:** svaki stroj je unutar 30 minuta online, na novoj verziji ili vraćen na staru.
+   Ako ijedan nije, valovi staju dok se uzrok ne utvrdi.
+
+### A.2 Završni korak za sve ostale
+
+1. Strojevima iz valova u `etag.txt` se upisuje ETag koji će imati novi javni paket. Izračunava se iz vremena
+   izmjene i veličine datoteke, istim algoritmom kao na serveru (P4), da ti strojevi ne bi ponovo preuzeli
+   isti paket.
+2. Stari javni `Content\Remotely-Win10-x64.zip` i `-x86.zip` premještaju se sa strane, a na njihovo mjesto
+   dolazi novi paket.
+3. Svi preostali stari agenti pri sljedećoj provjeri vide promijenjen ETag i ažuriraju se sami. Provjera ide pri
+   ponovnom spajanju i svakih 6 sati, a ugašeni strojevi se ažuriraju kad se upale.
+4. `MaxConcurrentUpdates` (10) ograničava broj istovremenih preuzimanja. Ukupni promet je oko
+   900 × 115 MB ≈ 100 GB, raspoređeno kroz sate i dane.
+
+### A.3 Strojevi kojima ažuriranje ne uspije
+
+- Installer vraća stari agent, koji nastavlja raditi s istim serverom.
+- Takav stroj bi pokušavao ponovo svakih 6 sati. Upit nad bazom ga nalazi: online je, a nakon 24 sata još
+  ima staru `AgentVersion`.
+- Skill mu u `etag.txt` upisuje ETag novog paketa, pa stroj ostaje na staroj verziji i prestaje pokušavati.
+  U ovu skupinu očekivano spadaju Windows 7 strojevi.
+
+### A.4 Praćenje
+
+- Upit nad bazom: broj uređaja po `AgentVersion` i online statusu, prije i poslije svakog vala te svakodnevno
+  nakon završnog koraka.
+- Broj preuzimanja `/api/AgentUpdate/DownloadPackage` u IIS logovima.
+
+### A.5 Povratak
+
+- **Jedan stroj:** skill pokreće installer sa starim paketom (`-path`). Novi agent izvršava naredbe, pa to radi.
+- **Cijela flota:** stari paket se vraća kao javni `Remotely-Win10-*.zip`. ETag se opet mijenja i agenti se
+  istim mehanizmom vraćaju na staru verziju.
+
+### A.6 Nakon ažuriranja
+
+Tokmak može ponovo koristiti javni paket bez `-path`, ali ne mora.
