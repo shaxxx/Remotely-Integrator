@@ -168,18 +168,19 @@ K1–K4 su na grani `integrator` forka, svaka u zasebnom commitu. K5 je u Tokmak
   Scroll s dva prsta je već u početnoj točki. **Uvjet:** preneseno smije slati samo poruke koje postoje u
   desktop klijentu iz 2021., jer viewer mora raditi i sa starim desktop klijentima.
 
-- **K4, build.** Osnova je `Utilities/Publish.ps1` iz početne točke, prilagođen ovako:
-  - `-Hostname https://remote.integrator.hr`, kao i danas: adresa se ugrađuje kao zadana adresa desktop
-    klijenta i u ClickOnce;
-  - RID `win-x64` i `win-x86` umjesto ukinutih `win10-x64` i `win10-x86`, uz `--self-contained` (već postoji);
-  - izbacuju se Linux i macOS agenti, `Desktop.XPlat` i `Server.Installer`;
-  - zadržavaju se desktop klijent i ClickOnce u `Content\Win-x64` i `Content\Win-x86`;
-  - server se objavljuje za `win-x64` kao self-contained;
-  - build daje i **pakete agenta za Tokmak** (x64 i x86, uz desktop klijent u `Desktop\`) te njihove SHA-256
-    sažetke. Ti paketi ne idu u `Content` servera;
+- **K4, build.** Nova skripta `Utilities/Integrator/Build-Integrator.ps1`, izvedena iz `Utilities/Publish.ps1`,
+  koji ostaje netaknut. Skripta gradi samo ono što ovaj projekt koristi:
+  - server za `win-x64`, self-contained;
+  - **pakete agenta za Tokmak** (x64 i x86, s desktop klijentom u `Desktop\`), self-contained, RID `win-x64` i
+    `win-x86` umjesto ukinutih `win10-*`, te njihove SHA-256 sažetke;
+  - obavezni parametar `-Hostname` ugrađuje se kao zadana adresa desktop klijenta (`DesktopAppConfig`), kao i
+    danas: produkcijski build dobiva `https://remote.integrator.hr`, a build za staging adresu staginga;
+  - verzija se računa iz datuma commita, kao u `Publish.ps1`;
   - exe datoteke ostaju nepotpisane, kao i danas.
 
-  Server `Content` se u ovom projektu ne mijenja (6.1, korak 2).
+  Skripta ne gradi ClickOnce, desktop klijent za preuzimanje, installer, Linux i macOS agente, `Desktop.XPlat` ni
+  `Server.Installer`. Server `Content` se u ovom projektu ne mijenja, nego se uvijek kopira s produkcije (6.1,
+  korak 2).
 
 - **K5, Tokmak.** Izmjena je u Tokmakovom repozitoriju, a ne u forku:
   - Tokmak paket agenta odgovarajuće arhitekture uzima iz svoje `exe` mape, istim redom kao i ostale exe
@@ -292,6 +293,7 @@ svakodnevno tjedan dana nakon koraka 1.
 - **P4:** za datoteke s poznatim vremenom izmjene i veličinom server vraća `ETag` jednak onome koji za iste
   datoteke vraća produkcijski server (vrijednosti snimljene s produkcije prije koraka 1).
 - **K5 (Tokmak):** paket s pogrešnim SHA-256 se ne instalira, a ispravan se predaje installeru s `-path`.
+  Tokmak nema testni projekt, pa se K5 provjerava ručno u krugu 2 (7.2).
 - **P2:** `dotnet ef migrations has-pending-model-changes` za `SqlServerDbContext` ne prijavljuje promjene,
   a isto provjerava test u repozitoriju.
 - **P1:**
@@ -392,7 +394,8 @@ isto zaglavlje) na stagingu radi testna skripta, a sam skill se provjerava na pr
 - DNS zapis `remote-test.integrator.hr` (postoji od 2026-10-26) i certifikat preko win-acme.
 - Prostor za backup i obnovu baze na CLOUD-u. Baza ima ~1300 uređaja i nekoliko tisuća redaka, a na disku C:
   je 171 GB slobodno.
-- .NET 10 SDK (10.0.301 instaliran na razvojnom računalu) i Visual Studio MSBuild za ClickOnce i WPF.
+- .NET 10 SDK (10.0.301 instaliran na razvojnom računalu) i .NET 6 runtime za testove na početnoj točki
+  (6.0.36 instaliran).
 - IVICATEST dostupan kroz Remotely te korisnikov RDP pristup za slučaj da zapne.
 - Testna kopija Operative s `config.ini` usmjerenim na staging.
 - Dogovoren termin izvan radnog vremena za korak 1.
