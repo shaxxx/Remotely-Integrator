@@ -25,8 +25,11 @@ ostaviti klijenta offline.
 
 ### 2.2 Bez izmjena kod korisnika Remotelyja
 
-Ne mijenjaju se: postojeći agenti na ~1250 strojeva, Tokmak (uključujući `Remotely_Install-[523e].exe`),
-Start2023, Operativa, remotely skill, TokenExtractor (`/token`) i procedura `dbo.TokenUpdate`.
+Ne mijenjaju se: postojeći agenti na ~1250 strojeva, `Remotely_Install-[523e].exe`, Start2023, Operativa,
+remotely skill, TokenExtractor (`/token`) i procedura `dbo.TokenUpdate`.
+
+Tokmak se mijenja samo u koraku 2 (6.2), i to minimalno: novi paket agenta uzima iz svoje `exe` mape,
+provjerava mu SHA-256 i predaje ga postojećem installeru preko `-path`.
 
 ### 2.3 Kriteriji uspjeha
 
@@ -37,7 +40,7 @@ Start2023, Operativa, remotely skill, TokenExtractor (`/token`) i procedura `dbo
   recepti) i Tokmak instalacija rade kao prije.
 - Web viewer na mobitelu podržava long-press (desni klik, povlačenje), scroll s dva prsta te virtualnu
   tipkovnicu s lijepljenjem teksta.
-- Nove instalacije preko Tokmaka dobivaju .NET 10 agent. Postojeći agenti se ne ažuriraju sami.
+- Nove instalacije preko nove verzije Tokmaka dobivaju .NET 10 agent. Postojeći agenti se ne ažuriraju sami.
 
 ## 3. Trenutno stanje (snimljeno 2026-10-26)
 
@@ -125,13 +128,18 @@ izmjenom, polazi se od `master` (2021.10.10), a ostatak dizajna ostaje isti.
 ### 4.3 Agenti se ne ažuriraju masovno
 
 Postojeći agenti ostaju kakvi jesu, jer su kompatibilni s novim serverom. To vrijedi i za Windows 7 strojeve.
-Nove instalacije dobivaju .NET 10 agent. Masovno ažuriranje flote izvan je ovog projekta (poglavlje 9).
+
+Javni paket `Content\Remotely-Win10-*.zip`, prema kojem agenti provjeravaju ažuriranja, ostaje stari i
+nepromijenjen. Zato agenti po samoj konstrukciji ne vide ništa novo, bez ikakvog prekidača na serveru.
+
+Nove instalacije dobivaju .NET 10 agent preko Tokmaka (6.2). Masovno ažuriranje flote izvan je ovog projekta
+(poglavlje 9).
 
 ## 5. Rješenje: kod i build
 
-### 5.1 Izmjene na grani `integrator`
+### 5.1 Izmjene
 
-Svaka izmjena ide u zasebnom commitu.
+K1–K4 su na grani `integrator` forka, svaka u zasebnom commitu. K5 je u Tokmaku (`C:\zeba\Tokmak`, TFVC).
 
 - **K1, API ključ u oba formata.** `ApiAuthorizationFilter` prihvaća:
   - `Authorization: KeyId:Secret`, bez prefiksa (skill, Operativa);
@@ -166,18 +174,21 @@ Svaka izmjena ide u zasebnom commitu.
   - RID `win-x64` i `win-x86` umjesto ukinutih `win10-x64` i `win10-x86`, uz `--self-contained` (već postoji);
   - izbacuju se Linux i macOS agenti, `Desktop.XPlat` i `Server.Installer`;
   - zadržavaju se desktop klijent i ClickOnce u `Content\Win-x64` i `Content\Win-x86`;
-  - **u `Content` ide postojeća produkcijska binarka `Remotely_Installer.exe`,** a ne nanovo izgrađena; njen
-    SHA-256 bilježi se pri deployu;
   - server se objavljuje za `win-x64` kao self-contained;
+  - build daje i **pakete agenta za Tokmak** (x64 i x86, uz desktop klijent u `Desktop\`) te njihove SHA-256
+    sažetke. Ti paketi ne idu u `Content` servera;
   - exe datoteke ostaju nepotpisane, kao i danas.
 
-- **K5, prekidač automatskog ažuriranja agenata.** Postavka `ApplicationOptions:AgentAutoUpdate`, zadano
-  `false`.
-  - Dok je `false`, server na `HEAD /Content/Remotely-Win10-x64.zip` i `HEAD /Content/Remotely-Win10-x86.zip`
-    koji nose `If-None-Match` odgovara `304 Not Modified`.
-  - `HEAD` bez tog zaglavlja (installer, Tokmak) i svi `GET` zahtjevi poslužuju se normalno.
-  - Na taj način provjeru ažuriranja šalju i stari (2021) i novi (2022.09 / .NET 10) agenti, pa se nijedan
-    ne ažurira sam. Installer i Tokmak i dalje dobivaju aktualni paket.
+  Server `Content` se u ovom projektu ne mijenja (6.1, korak 2).
+
+- **K5, Tokmak.** Izmjena je u Tokmakovom repozitoriju, a ne u forku:
+  - Tokmak paket agenta odgovarajuće arhitekture uzima iz svoje `exe` mape, istim redom kao i ostale exe
+    datoteke: `%TEMP%\Tokmak\exe\`, share pa `http://integrator.hr/tokmak/exe/`;
+  - prije instalacije provjerava SHA-256 paketa i, ako se ne poklapa, ne instalira;
+  - postojećem `Remotely_Install-[523e].exe` predaje iste parametre kao danas, uz dodani `-path <paket>`.
+
+  Installer i dalje radi `HEAD` na javni `Remotely-Win10-*.zip` i ETag upisuje u `etag.txt`. Zato novi agent pri
+  provjeri ažuriranja dobiva 304 i ostaje na svojoj verziji.
 
 ### 5.2 Pravila koja se provjeravaju testovima
 
@@ -192,17 +203,22 @@ Svaka izmjena ide u zasebnom commitu.
     `Content\Win-x64` i `Content\Win-x86`;
   - na klijentu: `C:\Program Files\Remotely`, servis `Remotely_Service`, `Remotely_Agent.exe` i
     `Desktop\Remotely_Desktop.exe`.
+- **P4, ETag javnih paketa se ne mijenja.** Za iste datoteke u `Content` novi server vraća točno isti `ETag`
+  kao stari. Ako se razlikuje, svi stari agenti bi ponovo instalirali isti stari paket (~900 × 115 MB). P4 se
+  provjerava na stagingu i ponovo odmah nakon koraka 1.
 
 ### 5.3 Što ostaje nepromijenjeno
 
 - `Agent.Installer.Win` i produkcijska binarka installera.
-- Postavke u `appsettings.json`. Dodaju se samo `TrustServerCertificate=True` u connection string (novi
-  SqlClient po zadanom traži enkripciju) i `AgentAutoUpdate=false`.
+- Postavke u `appsettings.json`. Dodaje se samo `TrustServerCertificate=True` u connection string, jer novi
+  SqlClient po zadanom traži enkripciju.
+- Sadržaj `wwwroot\Content`: isti paketi, s očuvanim vremenom izmjene.
 - `/token`, TokenExtractor i `dbo.TokenUpdate`.
 
 ## 6. Rješenje: uvođenje
 
-Načelo: jedan rizik u jednom trenutku. Server i agentski paketi mijenjaju se u odvojenim koracima.
+Načelo: jedan rizik u jednom trenutku. Server (korak 1) i nove instalacije agenata (korak 2) mijenjaju se u
+odvojenim koracima.
 
 ### 6.1 Korak 1: nadogradnja servera
 
@@ -229,7 +245,8 @@ CLOUD-u.
    - Operativa: status, spajanje i gumb "Remotely" sa session ID-om;
    - "Integrator podrška";
    - `/token`;
-   - `HEAD` na `Remotely-Win10-x64.zip` s `If-None-Match` vraća 304, a bez njega 200.
+   - P4: `HEAD` na `Remotely-Win10-x64.zip` i `-x86.zip` vraća isti `ETag` kao prije prebacivanja. Ako ne vraća,
+     odmah slijedi povratak.
 
 **Povratak:** fizička putanja sitea vraća se na `C:\sites\remotely` i radi se recycle poola. To traje manje od
 minute, a restore baze nije potreban, jer se shema nije mijenjala. Stara mapa se čuva do kraja projekta.
@@ -238,20 +255,27 @@ minute, a restore baze nije potreban, jer se shema nije mijenjala. Stara mapa se
 
 Radi se nakon najmanje nekoliko dana stabilnog rada koraka 1.
 
-1. Postojeći paketi iz `Content` kopiraju se u `Content\rollback\`.
-2. U `Content` se stavljaju novi paketi: `Remotely-Win10-x64.zip`, `Remotely-Win10-x86.zip` te desktop i
-   ClickOnce u `Content\Win-x64` i `Content\Win-x86`. `Remotely_Installer.exe` ostaje isti.
-3. `AgentAutoUpdate` ostaje `false`, pa postojeći agenti ostaju kakvi jesu.
-4. Provjera: svježa Tokmak instalacija na IVICATEST-u, nakon koje se novi agent pojavljuje online.
+1. Paketi agenta iz K4 (x64, x86) stavljaju se u Tokmakovu `exe` mapu, na share i na
+   `http://integrator.hr/tokmak/exe/`.
+2. Objavljuje se nova verzija Tokmaka s izmjenom K5.
+3. Provjera: svježa Tokmak instalacija na IVICATEST-u, nakon koje se novi agent pojavljuje online na novoj
+   verziji, a postojeći agenti ostaju na staroj.
 
-**Povratak:** paketi iz `Content\rollback\` vraćaju se u `Content`.
+Server se u ovom koraku ne dira.
+
+**Povratak:** vraća se prethodna verzija Tokmaka. Strojevi koji su u međuvremenu dobili novi agent ostaju na
+njemu i rade, jer je novi agent kompatibilan sa serverom.
 
 ### 6.3 Pojedinačno ažuriranje postojećeg stroja (po potrebi, nakon koraka 2)
 
-Kad stroj treba ispravak iz novog desktop klijenta, skill na njemu pokreće
-`Remotely_Installer.exe -install -quiet -serverurl https://remote.integrator.hr -organizationid <OrganizationID>`
-kao zaseban, odvezani proces. `<OrganizationID>` se čita iz `ConnectionInfo.json` tog stroja. Installer preuzima aktualni paket, radi backup i, ako instalacija ne uspije, vraća
-stari agent. Stari agent i dalje radi s novim serverom.
+Kad stroj treba ispravak iz novog desktop klijenta, postupak je:
+
+1. Skill na stroj pošalje paket agenta (`posalji`) i provjeri mu SHA-256.
+2. Na stroju pokrene
+   `Remotely_Installer.exe -install -quiet -path <paket> -serverurl https://remote.integrator.hr -organizationid <OrganizationID>`
+   kao zaseban, odvezani proces. `<OrganizationID>` se čita iz `ConnectionInfo.json` tog stroja.
+
+Installer radi backup i, ako instalacija ne uspije, vraća stari agent, koji i dalje radi s novim serverom.
 
 ### 6.4 Praćenje
 
@@ -265,10 +289,9 @@ svakodnevno tjedan dana nakon koraka 1.
 - Postojeći testovi (`Server.Tests`, `Shared.Tests`, `Desktop.Win.Tests`) na .NET 10 prolaze.
 - **K1:** prihvaća `KeyId:Secret` i `Basic base64(KeyId:Secret)`, a odbija prazno zaglavlje, pogrešan ključ i
   neispravan base64.
-- **K5:**
-  - `HEAD` s `If-None-Match` vraća 304 dok je `AgentAutoUpdate=false`;
-  - `HEAD` bez zaglavlja vraća 200 i ETag;
-  - kad je `AgentAutoUpdate=true`, ponašanje je normalno.
+- **P4:** za datoteke s poznatim vremenom izmjene i veličinom server vraća `ETag` jednak onome koji za iste
+  datoteke vraća produkcijski server (vrijednosti snimljene s produkcije prije koraka 1).
+- **K5 (Tokmak):** paket s pogrešnim SHA-256 se ne instalira, a ispravan se predaje installeru s `-path`.
 - **P2:** `dotnet ef migrations has-pending-model-changes` za `SqlServerDbContext` ne prijavljuje promjene,
   a isto provjerava test u repozitoriju.
 - **P1:**
@@ -300,7 +323,7 @@ isto zaglavlje) na stagingu radi testna skripta, a sam skill se provjerava na pr
 - Stari agent i stari desktop prolaze isti popis kao u krugu 2 (osim stavki koje traže novi agent).
 - Ako krug 1 ne prođe, odlučuje se o povratku na `master` (4.2).
 
-**Krug 2, .NET 10 build s K1–K5:**
+**Krug 2, .NET 10 build s K1–K4 i Tokmak s K5:**
 
 - **Stari agent (2021):**
   - online status i heartbeat;
@@ -310,17 +333,21 @@ isto zaglavlje) na stagingu radi testna skripta, a sam skill se provjerava na pr
   - chat, prijenos datoteka u oba smjera i međuspremnik;
   - Ctrl+Alt+Del, UAC prompt, zaključani ekran i više monitora;
   - viewer na mobitelu, sve stavke iz K3.
-- **Novi agent, instaliran Tokmakom.** Naredba je `Tokmak4 Remotely -i <GUID stroja iz CEZAR-a> -a "<parametri>"`,
-  gdje su `<parametri>` produkcijski parametri iz `RemotelyOptions.SetupCommandLineParameters`, ali sa
-  `-serverurl https://remote-test.integrator.hr`. Provjerava se:
+- **Novi agent, instaliran testnom verzijom Tokmaka s K5.** Naredba je
+  `Tokmak4 Remotely -i <GUID stroja iz CEZAR-a> -a "<parametri>"`, gdje su `<parametri>` produkcijski parametri
+  iz `RemotelyOptions.SetupCommandLineParameters`, ali sa `-serverurl https://remote-test.integrator.hr`.
+  Provjerava se:
   - isti popis kao za stari agent;
-  - poziv `/token` na stagingu, ručno.
+  - da nakon instalacije novi agent ostaje na svojoj verziji (provjera ažuriranja dobiva 304);
+  - poziv `/token` na stagingu, ručno;
+  - da Tokmak odbije paket s pogrešnim SHA-256.
 - **Ažuriranje i povratak:**
   - stari agent prelazi na novi preko installera;
   - zatim se installer pokreće s namjerno neispravnim paketom (`-path`), nakon čega stroj mora ostati online
     na prethodnoj verziji.
-- **K5:** provjera agenta dobiva 304, a installer i Tokmak dobivaju paket.
 - **Server:**
+  - P4: `ETag` za `Remotely-Win10-x64.zip` i `-x86.zip` jednak je produkcijskom; stari agent na stagingu ne
+    pokreće ažuriranje;
   - `__EFMigrationsHistory` i popis stupaca u bazi isti su prije i nakon starta;
   - logovi su bez grešaka;
   - vježba povratka zamjenom fizičke putanje.
@@ -339,7 +366,8 @@ isto zaglavlje) na stagingu radi testna skripta, a sam skill se provjerava na pr
 | Razlike u radu između .NET 5/6 i .NET 10 (serijalizacija, SignalR) | P1 testovi sa zlatnim datotekama; krug 2 na stagingu sa starim agentom |
 | EF Core 10 vidi promjenu modela pa `Migrate()` baca iznimku ili traži migraciju | P2 test; ako se pojavi razlika, rješava se konfiguracijom modela, nikad migracijom |
 | SqlClient odbija vezu bez enkripcije | `TrustServerCertificate=True` u connection stringu |
-| Agent bez `etag.txt` šalje provjeru bez `If-None-Match`, pa ga K5 ne zaustavlja | Ažurira se; installer pri neuspjehu vraća stari agent, koji ostaje kompatibilan |
+| Novi server vraća drukčiji `ETag` za iste datoteke, pa svi stari agenti reinstaliraju stari paket | P4 test na stagingu; provjera odmah nakon koraka 1 i povratak ako se razlikuje |
+| Paket iz Tokmakove `exe` mape preuzima se i preko `http` | Tokmak provjerava SHA-256 prije instalacije (K5) |
 | K3 slučajno uvede poruku koju stari desktop ne razumije | Uvjet u K3; test sa starim desktopom u krugu 2 |
 | PowerShell SDK na .NET 10 mijenja ponašanje ljuske PSCore u novom agentu | Skill koristi WinPS i CMD (vanjski procesi); PSCore se testira u krugu 2 |
 | `Microsoft.MixedReality.WebRTC` ne radi na .NET 10 | Uklanja se (WebRTC je isključen), bez promjene protokola |
@@ -349,12 +377,13 @@ isto zaglavlje) na stagingu radi testna skripta, a sam skill se provjerava na pr
 
 ## 9. Izvan opsega
 
-- Masovno ažuriranje postojećih agenata. Ako se jednom poželi, ide u valovima pa uključenjem `AgentAutoUpdate`.
+- Masovno ažuriranje postojećih agenata. Ako se jednom poželi, ide u valovima (6.3) i završava zamjenom javnog
+  `Remotely-Win10-*.zip` novim paketom.
 - Prelazak na upstream 2024 i njegove mogućnosti.
 - Remote file explorer. Moguć je kao zaseban projekt iznad izvršavanja PowerShella i postojećeg relaya,
   neovisno o verziji Remotelyja.
-- Modernizacija Tokmaka: `Install-Remotely.ps1`, prečac s `--host`, ispravak čitanja registryja u
-  `Integrator.MachineSetup\Remotely.cs` i obrada greške `UpdateServerToken`.
+- Modernizacija Tokmaka izvan izmjene K5: `Install-Remotely.ps1`, prečac s `--host`, ispravak čitanja
+  registryja u `Integrator.MachineSetup\Remotely.cs` i obrada greške `UpdateServerToken`.
 - Potpisivanje binarki.
 - Podrška za Windows 7 i 8.1 kod novih instalacija.
 - Uklanjanje i zamjena API ključa zapisanog u komentaru u `Operativa2023\frmMachinesNew.vb` (zasebna radnja).
@@ -368,3 +397,4 @@ isto zaglavlje) na stagingu radi testna skripta, a sam skill se provjerava na pr
 - IVICATEST dostupan kroz Remotely te korisnikov RDP pristup za slučaj da zapne.
 - Testna kopija Operative s `config.ini` usmjerenim na staging.
 - Dogovoren termin izvan radnog vremena za korak 1.
+- Za korak 2: izgradnja i objava nove verzije Tokmaka. Check-in u TFVC radi korisnik.
