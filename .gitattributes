@@ -62,3 +62,8 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# Protocol contract golden files: exact bytes, never line-ending converted.
+###############################################################################
+Tests/Server.Tests/Contract/Golden/*.bin binary
