@@ -74,7 +74,12 @@ function Get-NewSqlValue([string]$val, [string]$db) {
     if ($n -ne 1) { throw "u SQLServer vrijednosti ocekivana tocno 1 oznaka baze (Database/Initial Catalog), nadjeno $n." }
     $ev = [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $m.Groups[1].Value + $m.Groups[2].Value + $m.Groups[3].Value + $m.Groups[4].Value + $db }
     $new = [regex]::Replace($val, $kw, $ev, $opt)
-    if (-not [regex]::IsMatch($new, '(^|;)\s*TrustServerCertificate\s*=', $opt)) {
+    $tscKw = '(^|;)\s*TrustServerCertificate\s*=\s*([^;]*)'
+    $tsc = [regex]::Matches($new, $tscKw, $opt)
+    if ($tsc.Count -gt 1) { throw "u SQLServer vrijednosti TrustServerCertificate se pojavljuje $($tsc.Count) puta (ocekivano 0 ili 1)." }
+    if ($tsc.Count -eq 1) {
+        if ($tsc[0].Groups[2].Value.Trim() -ine 'True') { throw "u SQLServer vrijednosti TrustServerCertificate nije True (vrijednost se ne ispisuje); novi server bi izgubio vezu na bazu. Nista nije stvoreno." }
+    } else {
         if ($new.TrimEnd().EndsWith(';')) { $new = $new.TrimEnd() + 'TrustServerCertificate=True' }
         else { $new = $new + ';TrustServerCertificate=True' }
     }
@@ -97,16 +102,19 @@ function Compare-Content([string]$srcDir, [string]$dstDir) {
     $b = Get-RelativeFiles $dstDir
     $diffs = 0
     foreach ($k in ($a.Keys | Sort-Object)) {
-        if (-not $b.ContainsKey($k)) { Write-Output "RAZLIKA: nedostaje u cilju: $k"; $diffs++; continue }
-        $fa = $a[$k]; $fb = $b[$k]
-        if ($fa.Length -ne $fb.Length) { Write-Output "RAZLIKA: Length $k izvor=$($fa.Length) cilj=$($fb.Length)"; $diffs++ }
-        if ($fa.LastWriteTimeUtc.Ticks -ne $fb.LastWriteTimeUtc.Ticks) {
-            Write-Output ("RAZLIKA: LastWriteTimeUtc {0} izvor={1} cilj={2}" -f $k, $fa.LastWriteTimeUtc.ToString('o'), $fb.LastWriteTimeUtc.ToString('o'))
+        $fa = $a[$k]
+        $line = "{0} Length={1} LastWriteTimeUtc={2}" -f $k, $fa.Length, $fa.LastWriteTimeUtc.ToString('o')
+        if (-not $b.ContainsKey($k)) { Write-Output "DIFF $line (nedostaje u cilju)"; $diffs++; continue }
+        $fb = $b[$k]
+        if ($fa.Length -ne $fb.Length -or $fa.LastWriteTimeUtc.Ticks -ne $fb.LastWriteTimeUtc.Ticks) {
+            Write-Output ("DIFF {0} | cilj Length={1} LastWriteTimeUtc={2}" -f $line, $fb.Length, $fb.LastWriteTimeUtc.ToString('o'))
             $diffs++
+        } else {
+            Write-Output "OK   $line"
         }
     }
     foreach ($k in ($b.Keys | Sort-Object)) {
-        if (-not $a.ContainsKey($k)) { Write-Output "RAZLIKA: visak u cilju: $k"; $diffs++ }
+        if (-not $a.ContainsKey($k)) { Write-Output "DIFF $k (visak u cilju: Length=$($b[$k].Length) LastWriteTimeUtc=$($b[$k].LastWriteTimeUtc.ToString('o')))"; $diffs++ }
     }
     Write-Output "Usporedeno datoteka: izvor=$($a.Count) cilj=$($b.Count); razlika=$diffs"
     $script:diffCount = $diffs
@@ -152,7 +160,7 @@ try {
     # stdoutLogEnabled iz izvornog web.config
     $wcMs = [regex]::Matches((Read-DecodedFile $srcWebConfig).Text, 'stdoutLogEnabled\s*=\s*"([^"]*)"')
     if ($wcMs.Count -ne 1) { Fail "u izvornom web.config ocekivan tocno 1 stdoutLogEnabled, nadjeno $($wcMs.Count)." }
-    $stdoutEnabled = $wcMs[0].Groups[1].Value
+    $stdoutEnabled = $wcMs[0].Groups[1].Value.Trim().ToLowerInvariant()
     if ($stdoutEnabled -cne 'true' -and $stdoutEnabled -cne 'false') { Fail "izvorni stdoutLogEnabled nije true/false." }
 
     # ---- 1. Raspakiravanje ----
