@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+
+    <IsPackable>false</IsPackable>
+
+    <RootNamespace>Remotely.Server.Tests</RootNamespace>
+
+    <AssemblyName>Remotely.Contract.DtoGolden.Tests</AssemblyName>
+
+    <!-- MessagePack 2.1.90 is pinned on purpose as the byte reference; its NuGet advisories (untrusted input) do not apply to a test reading its own golden files. -->
+    <NoWarn>$(NoWarn);NU1902;NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MessagePack version Desktop.Core/Agent resolve at v2022.09.16.1006: the desktop client produces and consumes DTOs, the server only relays byte[]. -->
+    <PackageReference Include="MessagePack" Version="2.1.90" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.2.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="2.2.10" />
+    <PackageReference Include="MSTest.TestFramework" Version="2.2.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- [CallerFilePath] in the linked sources keeps the golden files in Tests/Server.Tests/Contract/Golden. -->
+    <Compile Include="..\Server.Tests\Contract\DtoGoldenTests.cs" Link="Contract\DtoGoldenTests.cs" />
+    <Compile Include="..\Server.Tests\Contract\SampleFactory.cs" Link="Contract\SampleFactory.cs" />
+    <Compile Include="..\Server.Tests\Contract\GoldenFile.cs" Link="Contract\GoldenFile.cs" />
+  </ItemGroup>
+
+</Project>

@@ -48,16 +48,21 @@ obriše JS koji generira TypeScript; sljedeći obični build prolazi i datoteke 
 
 ## Ugovor protokola (P1)
 
-Testovi u `Tests/Server.Tests/Contract`, zlatne datoteke u `Tests/Server.Tests/Contract/Golden`
-(`.gitattributes`: `binary`, bez pretvorbe krajeva redaka).
+Zlatne datoteke su u `Tests/Server.Tests/Contract/Golden` (`.gitattributes`: `binary`, bez pretvorbe
+krajeva redaka). Testovi se izvršavaju u dva projekta:
 
-- Provjera: `dotnet test Tests/Server.Tests -p:LibraryRestore=false --filter FullyQualifiedName~Contract`
-- Generiranje: isto uz `REMOTELY_UPDATE_GOLDEN=1`.
+| Projekt | Testovi | MessagePack | Provjera |
+|---|---|---|---|
+| `Tests/Server.Tests` | `HubSignatures_MatchBaseline`, `HubMethodPayloads_MatchBaseline`, `ClientInvocationPayloads_MatchBaseline`, `GoldenPayloads_ParseToSamples` (`hub-*`, `client-*`) | 2.1.152 (kao `Server`) | `dotnet test Tests/Server.Tests -p:LibraryRestore=false --filter FullyQualifiedName~Contract` |
+| `Tests/Contract.DtoGolden.Tests` | `Dtos_MatchBaseline` (`dto-*`) | 2.1.90 (kao `Desktop.Core` i `Agent`) | `dotnet test Tests/Contract.DtoGolden.Tests` |
 
-Rezultat na početnoj točki: 4 prošla, 1 preskočen (`Dtos_MatchBaseline`, vidi dolje), 0 palih.
-S njima `Tests/Server.Tests` ima 18 testova: 17 prošlo, 1 preskočen.
+Generiranje: iste naredbe uz varijablu okoline `REMOTELY_UPDATE_GOLDEN=1`.
 
-### Zlatne datoteke DTO-a (`dto-*.bin`) su iz MessagePacka 2.1.90
+Rezultat na početnoj točki: `Server.Tests` Contract 4 prošla; `Contract.DtoGolden.Tests` 1 prošao
+(22 DTO-a uspoređena bajt po bajt). Ništa nije preskočeno. S njima `Tests/Server.Tests` ima 17 testova,
+svi prolaze.
+
+### Zašto DTO-i imaju svoj projekt (MessagePack 2.1.90)
 
 `Server` (pa time i `Server.Tests`) preko `Microsoft.VisualStudio.Debugger.Contracts` 17.2.0 dobiva
 MessagePack **2.1.152**. Ta verzija ne može napraviti formatter za `[DataContract]` klasu koja
@@ -68,47 +73,25 @@ MessagePackDynamicObjectResolverException: key is duplicated, all members key mu
 ```
 
 To vrijedi za 21 od 22 DTO-a (svi osim `BaseDto`). Server DTO-e nikad ne serijalizira (prosljeđuje
-`byte[]`); serijaliziraju ih desktop klijenti (`Desktop.Core`), koji na početnoj točki koriste
-MessagePack **2.1.90**. Zato su `dto-*.bin` generirani istim testnim kodom
-(`SampleFactory.cs`, `GoldenFile.cs`, `DtoGoldenTests.cs`) preveden uz MessagePack 2.1.90, ovim
-pomoćnim projektom izvan repozitorija:
+`byte[]`); serijaliziraju ih i čitaju desktop klijenti (`Desktop.Core`), koji na početnoj točki koriste
+MessagePack **2.1.90**. Zato `Tests/Contract.DtoGolden.Tests` referencira `Shared` i MessagePack 2.1.90
+te prevodi `DtoGoldenTests.cs`, `SampleFactory.cs` i `GoldenFile.cs` iz `Tests/Server.Tests/Contract`
+kao povezane datoteke; `Server.Tests` `DtoGoldenTests.cs` isključuje (`Compile Remove`). Putanja zlatnih
+datoteka dolazi iz `[CallerFilePath]`, pa oba projekta koriste isti `Contract/Golden`.
+U tom projektu su upozorenja NU1902/NU1903 isključena (`NoWarn`) jer je 2.1.90 namjerno zadržan kao
+referenca bajtova.
 
-```xml
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
-    <IsPackable>false</IsPackable>
-    <Repo>C:\Users\isako\source\repos\Remotely-integrator</Repo>
-    <MpVersion Condition="'$(MpVersion)' == ''">2.1.90</MpVersion>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="MessagePack" Version="$(MpVersion)" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.2.0" />
-    <PackageReference Include="MSTest.TestAdapter" Version="2.2.10" />
-    <PackageReference Include="MSTest.TestFramework" Version="2.2.10" />
-    <ProjectReference Include="$(Repo)\Shared\Shared.csproj" />
-    <Compile Include="$(Repo)\Tests\Server.Tests\Contract\SampleFactory.cs" />
-    <Compile Include="$(Repo)\Tests\Server.Tests\Contract\GoldenFile.cs" />
-    <Compile Include="$(Repo)\Tests\Server.Tests\Contract\DtoGoldenTests.cs" />
-  </ItemGroup>
-</Project>
-```
+### Otvoreno pitanje prije Task 8: MessagePack 2.5.x
 
-Naredbe: `REMOTELY_UPDATE_GOLDEN=1 dotnet test -p:MpVersion=2.1.90` (generiranje), zatim
-`dotnet test -p:MpVersion=2.1.90` (provjera: 1 prošao). Datoteke se pišu u `Contract/Golden` repozitorija
-jer putanja dolazi iz `[CallerFilePath]` povezanih izvornih datoteka.
-
-U `Server.Tests` s MessagePackom 2.1.152 `Dtos_MatchBaseline` provjeri da postoje sve 22 datoteke
-`dto-*.bin` (i da nema viška), a zatim završi kao *inconclusive* (preskočen). S bilo kojom drugom
-verzijom MessagePacka test uspoređuje bajtove.
-
-### Pregled za .NET 10: MessagePack 2.5.192
-
-Isti testovi uz MessagePack 2.5.192 (još uvijek `net6.0` i SignalR 6.0.6):
+Isti testovi uz MessagePack 2.5.192 (još uvijek `net6.0` i SignalR 6.0.6, privremeni projekt izvan
+repozitorija):
 
 - `hub-signatures`, svi `hub-*`, svi `client-*` i `GoldenPayloads_ParseToSamples`: prolaze, bajtovi isti.
-- `dto-*`: 17 od 22 se razlikuje. Duljina je ista, razlika je redoslijed ključeva u mapi: 2.5.192 piše
-  `DtoType` (svojstvo deklarirano u `BaseDto`) prvo, a 2.1.90 redom deklaracije u izvedenoj klasi, npr.
-  `{"Width":1,"Height":2,"DtoType":2}` (2.1.90) prema `{"DtoType":2,"Width":1,"Height":2}` (2.5.192).
-  Isti su `BaseDto`, `CaptureFrameDto`, `MouseMoveDto`, `MouseWheelDto` i `TapDto`, kojima je `DtoType`
-  već prvi.
+- `dto-*`: 17 od 22 se razlikuje. Ključevi i vrijednosti su isti, duljina je ista, razlika je samo
+  redoslijed ključeva u mapi: 2.5.192 piše `DtoType` (svojstvo deklarirano u `BaseDto`) prvo, a 2.1.90
+  redom deklaracije u izvedenoj klasi, npr. `{"Width":1,"Height":2,"DtoType":2}` (2.1.90) prema
+  `{"DtoType":2,"Width":1,"Height":2}` (2.5.192). Isti su `BaseDto`, `CaptureFrameDto`, `MouseMoveDto`,
+  `MouseWheelDto` i `TapDto`, kojima je `DtoType` već prvi.
+
+Treba li za DTO-e uz MessagePack 2.5.x prihvatiti drugačiji redoslijed ključeva ili zadržati bajtnu
+jednakost s 2.1.90, odluka je korisnika prije Task 8. Ovdje nije donesena.

@@ -25,4 +25,9 @@
     <ProjectReference Include="..\..\Server\Server.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Runs in Tests/Contract.DtoGolden.Tests against MessagePack 2.1.90 (this project resolves 2.1.152). -->
+    <Compile Remove="Contract\DtoGoldenTests.cs" />
+  </ItemGroup>
+
 </Project>
