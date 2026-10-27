@@ -2,7 +2,6 @@
 using Microsoft.AspNetCore.Mvc.Filters;
 using Remotely.Server.Services;
 using System;
-using System.Net;
 using System.Text;
 
 namespace Remotely.Server.Auth
@@ -26,48 +25,78 @@ namespace Remotely.Server.Auth
                 return;
             }
 
-            if (context.HttpContext.Request.Headers.TryGetValue("Authorization", out var result))
+            if (context.HttpContext.Request.Headers.TryGetValue("Authorization", out var result) &&
+                TryParseApiKey(result.ToString(), out var keyId, out var apiSecret) &&
+                DataService.ValidateApiKey(
+                    keyId,
+                    apiSecret,
+                    context.HttpContext.Request.Path,
+                    context.HttpContext.Connection.RemoteIpAddress?.ToString()))
             {
-
-                var headerComponents = result.ToString().Split(" ");
-                if (headerComponents.Length < 2)
-                {
-                    context.HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
-                    context.Result = new UnauthorizedResult();
-                    return;
-                };
-
-                var tokenType = headerComponents[0].Trim();
-                var encodedToken = headerComponents[1].Trim();
-
-                switch (tokenType)
-                {
-                    case "Basic":
-                        byte[] data = Convert.FromBase64String(encodedToken);
-                        string decodedString = Encoding.UTF8.GetString(data);
-
-                        var authComponents = decodedString.ToString().Split(":");
-                        if (authComponents.Length < 2)
-                        {
-                            context.HttpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
-                            context.Result = new UnauthorizedResult();
-                            return;
-                        };
-
-                        var keyId = authComponents[0]?.Trim();
-                        var apiSecret = authComponents[1]?.Trim();
-                        if (DataService.ValidateApiKey(keyId, apiSecret, context.HttpContext.Request.Path, context.HttpContext.Connection.RemoteIpAddress.ToString()))
-                        {
-                            var orgID = DataService.GetApiKey(keyId)?.OrganizationID;
-                            context.HttpContext.Request.Headers["OrganizationID"] = orgID;
-                            return;
-                        }
-                        break;
-                }
-
+                var orgID = DataService.GetApiKey(keyId)?.OrganizationID;
+                context.HttpContext.Request.Headers["OrganizationID"] = orgID;
+                return;
             }
 
             context.Result = new UnauthorizedResult();
+        }
+
+        /// <summary>
+        /// Parses an API key from an Authorization header value. Accepts both
+        /// "Basic base64(keyId:secret)" and the raw "keyId:secret" form.
+        /// </summary>
+        public static bool TryParseApiKey(string headerValue, out string keyId, out string secret)
+        {
+            keyId = null;
+            secret = null;
+
+            var value = headerValue?.Trim();
+            if (string.IsNullOrEmpty(value))
+            {
+                return false;
+            }
+
+            var decoded = value;
+
+            var schemeEnd = value.IndexOfAny(new[] { ' ', '	' });
+            if (schemeEnd > 0 &&
+                value.Substring(0, schemeEnd).Equals("Basic", StringComparison.OrdinalIgnoreCase))
+            {
+                var encoded = value.Substring(schemeEnd).Trim();
+                if (encoded.Length > 0)
+                {
+                    var buffer = new byte[encoded.Length];
+                    if (!Convert.TryFromBase64String(encoded, buffer, out var written))
+                    {
+                        return false;
+                    }
+                    try
+                    {
+                        decoded = new UTF8Encoding(false, true).GetString(buffer, 0, written);
+                    }
+                    catch (ArgumentException)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            var colon = decoded.IndexOf(':');
+            if (colon < 0)
+            {
+                return false;
+            }
+
+            var id = decoded.Substring(0, colon).Trim();
+            var sec = decoded.Substring(colon + 1).Trim();
+            if (id.Length == 0 || sec.Length == 0)
+            {
+                return false;
+            }
+
+            keyId = id;
+            secret = sec;
+            return true;
         }
     }
 }
