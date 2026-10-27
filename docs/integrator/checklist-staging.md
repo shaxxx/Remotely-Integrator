@@ -2,20 +2,24 @@
 
 Osnovica vrijednosti (ETag, migracije, SHA-256 sheme) je u `docs/integrator/baseline-production.md`. Stupci `rezultat` i `napomena` popunjavaju se tijekom testa. Rezultati kruga 1 prepisuju se u `staging-krug1.md`.
 
-Provjere API-ja rade se skriptom `Utilities/Integrator/Invoke-RemotelyApiCheck.ps1` (ključ iz varijabli okoline `REMOTELY_API_KEY_ID` i `REMOTELY_API_KEY`).
+Provjere API-ja rade se skriptom `Utilities/Integrator/Invoke-RemotelyApiCheck.ps1` (ključ se čita iz configa skilla `~/.remotely-skill/config.json`, polja `remotely.apiKeyId` i `remotely.apiKey`; varijable okoline `REMOTELY_API_KEY_ID` i `REMOTELY_API_KEY` imaju prednost).
 
 ## Krug 1: početna točka (`v2022.09.16.1006` + K1, .NET 6)
 
 Stari agent (2021, IVICATEST) i stari desktop prolaze isti popis kao u krugu 2, bez stavki koje traže novi agent ili K3. Ako krug 1 ne prođe, odlučuje se o povratku na `master` (spec 4.2).
+
+### Zašto su kriteriji usporedni s produkcijom
+
+Dvije su činjenice iz starog koda (nisu uvedene našim izmjenama). Prvo, stari agent (2021) nakon izvršenja naredbe šalje rezultat na `/API/ScriptResults` (sprema se u bazu), ali zatim poziva hub metodu `ScriptResultViaApi(requestID)` s jednim argumentom, dok metoda na serveru prima dva (`commandID, requestID`). Server zato nikad ne sazna rezultat i `POST api/Scripting/ExecuteCommand` nakon čekanja od 30 s vraća 404 (`Server/API/ScriptingController.cs`); isto je i na produkciji. Rezultat se zato čita iz `GET api/ScriptResults`. Drugo, stari agent u vlastitom prosljeđivanju stdin/stdouta gubi `č`/`ć`/`đ` (izlaz `ccžšd CCŽŠÐ`), neovisno o serveru; server je pritom bez gubitka (`ScriptInput` je točno poslani tekst). Zato se provjerava paritet s produkcijom (isto ponašanje, isti izlaz za isti stroj i naredbu), a ne točan hrvatski izlaz.
 
 ### K1. Stari agent (2021) i stari desktop
 
 | # | stavka | očekivano | rezultat | napomena |
 |---|---|---|---|---|
 | 1.1 | Online status i heartbeat | Stroj je online na stagingu, `LastOnline` se osvježava | | |
-| 1.2 | `GET api/Devices/{id}` preko `Invoke-RemotelyApiCheck.ps1` | 200, `IsOnline=true`, u oba formata zaglavlja | | |
-| 1.3 | `ExecuteCommand/WinPS` s `Write-Output 'čćžšđ ČĆŽŠĐ'` | 200, `StandardOutput` točno `čćžšđ ČĆŽŠĐ`, u oba formata zaglavlja | | |
-| 1.4 | `ExecuteCommand/CMD` s `echo čćžšđ` | 200, `StandardOutput` točno `čćžšđ`, u oba formata zaglavlja | | |
+| 1.2 | `GET api/Devices/{id}` preko `Invoke-RemotelyApiCheck.ps1` | 200, `IsOnline` i `AgentVersion` zabilježeni, u oba formata zaglavlja | | |
+| 1.3 | `ExecuteCommand/WinPS` s `Write-Output 'čćžšđ ČĆŽŠĐ'` | `ExecuteCommand` kao na produkciji (sa starim agentom 404 nakon ~30 s), rezultat se nalazi u `GET api/ScriptResults`; `ScriptInput` točno jednak poslanom tekstu; `StandardOutput` zabilježen i jednak produkcijskom za isti stroj i naredbu (usporedba kad se IVICATEST vrati na produkciju); u oba formata zaglavlja | | |
+| 1.4 | `ExecuteCommand/CMD` s `echo čćžšđ` | `ExecuteCommand` kao na produkciji (sa starim agentom 404 nakon ~30 s), rezultat se nalazi u `GET api/ScriptResults`; `ScriptInput` točno jednak poslanom tekstu; `StandardOutput` zabilježen i jednak produkcijskom za isti stroj i naredbu (usporedba kad se IVICATEST vrati na produkciju); u oba formata zaglavlja | | |
 | 1.5 | Varijante zaglavlja koje šalju stvarni klijenti: razmaci oko vrijednosti, `basic` malim slovima, tajna s `+`, `/`, `=`, tajna s dvotočkom | Sve se autorizira (200); neispravan base64, prazno zaglavlje i pogrešan ključ daju 401 | | |
 | 1.6 | Remote control iz weba | Sesija se otvara, slika i unos rade | | |
 | 1.7 | Remote control iz testne Operative (`config.ini` s `BaseUrl` na staging) | Sesija se otvara, slika i unos rade | | |
@@ -28,7 +32,7 @@ Stari agent (2021, IVICATEST) i stari desktop prolaze isti popis kao u krugu 2, 
 | 1.14 | UAC prompt | Prompt je vidljiv i može se potvrditi u sesiji | | |
 | 1.15 | Zaključani ekran | Sesija ostaje upotrebljiva, prijava iz sesije radi | | |
 | 1.16 | Više monitora (ako stroj ima više monitora) | Prebacivanje monitora radi | | |
-| 1.17 | Hrvatska slova u izlazu skripte kroz stari agent (`čćžšđ ČĆŽŠĐ`) i u tipkanju kroz remote control | Znakovi stižu do skilla/ekrana nepromijenjeni | | |
+| 1.17 | Hrvatska slova u izlazu skripte kroz stari agent (`čćžšđ ČĆŽŠĐ`) i u tipkanju kroz remote control | Izlaz skripte: kao u 1.3/1.4 (usporedba s produkcijom; stari agent gubi `č`/`ć`/`đ`, vidi objašnjenje ispod Kruga 1); tipkanje i međuspremnik kroz remote control: znakovi stižu na ekran nepromijenjeni | | |
 
 ### K1. Server (primjenjive provjere)
 
@@ -47,9 +51,9 @@ Stari agent (2021, IVICATEST) i stari desktop prolaze isti popis kao u krugu 2, 
 | # | stavka | očekivano | rezultat | napomena |
 |---|---|---|---|---|
 | 2.1 | Online status i heartbeat | Stroj je online na stagingu, `LastOnline` se osvježava | | |
-| 2.2 | `GET api/Devices/{id}` preko `Invoke-RemotelyApiCheck.ps1` | 200, `IsOnline=true`, u oba formata zaglavlja | | |
-| 2.3 | `ExecuteCommand/WinPS` s `Write-Output 'čćžšđ ČĆŽŠĐ'` | 200, `StandardOutput` točno `čćžšđ ČĆŽŠĐ`, u oba formata zaglavlja | | |
-| 2.4 | `ExecuteCommand/CMD` s `echo čćžšđ` | 200, `StandardOutput` točno `čćžšđ`, u oba formata zaglavlja | | |
+| 2.2 | `GET api/Devices/{id}` preko `Invoke-RemotelyApiCheck.ps1` | 200, `IsOnline` i `AgentVersion` zabilježeni, u oba formata zaglavlja | | |
+| 2.3 | `ExecuteCommand/WinPS` s `Write-Output 'čćžšđ ČĆŽŠĐ'` | `ExecuteCommand` kao na produkciji (sa starim agentom 404 nakon ~30 s), rezultat se nalazi u `GET api/ScriptResults`; `ScriptInput` točno jednak poslanom tekstu; `StandardOutput` zabilježen i jednak produkcijskom za isti stroj i naredbu (usporedba kad se IVICATEST vrati na produkciju); u oba formata zaglavlja | | |
+| 2.4 | `ExecuteCommand/CMD` s `echo čćžšđ` | `ExecuteCommand` kao na produkciji (sa starim agentom 404 nakon ~30 s), rezultat se nalazi u `GET api/ScriptResults`; `ScriptInput` točno jednak poslanom tekstu; `StandardOutput` zabilježen i jednak produkcijskom za isti stroj i naredbu (usporedba kad se IVICATEST vrati na produkciju); u oba formata zaglavlja | | |
 | 2.5 | Varijante zaglavlja koje šalju stvarni klijenti: razmaci oko vrijednosti, `basic` malim slovima, tajna s `+`, `/`, `=`, tajna s dvotočkom | Sve se autorizira (200); neispravan base64, prazno zaglavlje i pogrešan ključ daju 401 | | |
 | 2.6 | Remote control iz weba | Sesija se otvara, slika i unos rade | | |
 | 2.7 | Remote control iz testne Operative (`config.ini` s `BaseUrl` na staging) | Sesija se otvara, slika i unos rade | | |
@@ -62,7 +66,7 @@ Stari agent (2021, IVICATEST) i stari desktop prolaze isti popis kao u krugu 2, 
 | 2.14 | UAC prompt | Prompt je vidljiv i može se potvrditi u sesiji | | |
 | 2.15 | Zaključani ekran | Sesija ostaje upotrebljiva, prijava iz sesije radi | | |
 | 2.16 | Više monitora (ako stroj ima više monitora) | Prebacivanje monitora radi | | |
-| 2.17 | Hrvatska slova u izlazu skripte kroz stari agent (`čćžšđ ČĆŽŠĐ`) i u tipkanju kroz remote control | Znakovi stižu do skilla/ekrana nepromijenjeni | | |
+| 2.17 | Hrvatska slova u izlazu skripte kroz stari agent (`čćžšđ ČĆŽŠĐ`) i u tipkanju kroz remote control | Izlaz skripte: kao u 2.3/2.4 (usporedba s produkcijom; stari agent gubi `č`/`ć`/`đ`, vidi objašnjenje ispod Kruga 1); tipkanje i međuspremnik kroz remote control: znakovi stižu na ekran nepromijenjeni | | |
 | 2.18 | Hrvatske putanje u prijenosu datoteka (naziv datoteke sa `čćžšđ`) | Datoteka se prenosi s ispravnim nazivom | | |
 
 ### K2. Novi agent, instaliran testnom verzijom Tokmaka s K5
@@ -72,7 +76,7 @@ Naredba: `Tokmak4 Remotely -i <GUID stroja iz CEZAR-a> -a "<parametri>"`, s `-se
 | # | stavka | očekivano | rezultat | napomena |
 |---|---|---|---|---|
 | 3.1 | Isti popis kao za stari agent (sve stavke iz tablice 2.) | Sve stavke prolaze | | |
-| 3.2 | Hrvatska slova u izlazu skripte kroz novi agent (WinPS i CMD) | `čćžšđ ČĆŽŠĐ` i `čćžšđ` stižu do skilla nepromijenjeni | | |
+| 3.2 | Hrvatska slova u izlazu skripte kroz novi agent (WinPS i CMD) | Cilj: točan izlaz `čćžšđ ČĆŽŠĐ` i `čćžšđ`. Najmanje onako dobro kao stari agent (kriteriji kao 2.3/2.4: rezultat u `ScriptResults`, `ScriptInput` točan, izlaz zabilježen i uspoređen s produkcijom); odstupanje od točnog izlaza evidentira se kao nalaz | | |
 | 3.3 | Nakon instalacije novi agent ostaje na svojoj verziji | Provjera ažuriranja dobiva 304 | | |
 | 3.4 | Poziv `/token` na stagingu (ručno) | Radi i koristi `Remotely_Test` | | |
 | 3.5 | Tokmak odbija paket s pogrešnim SHA-256 | Ne instalira se | | |
