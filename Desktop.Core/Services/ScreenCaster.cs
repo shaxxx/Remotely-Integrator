@@ -89,6 +89,11 @@ namespace Remotely.Desktop.Core.Services
                     await viewer.SendScreenSize(bounds.Width, bounds.Height);
                 };
 
+                // The initial frame and the send loop share one sequence counter. The viewer treats
+                // Sequence 0 as a restart and clears its queue, so the loop must not reuse the
+                // sequence number of the initial frame.
+                var sequence = 0;
+
                 // This gets disposed internally in the Capturer on the next call.
                 var result = viewer.Capturer.GetNextFrame();
 
@@ -100,7 +105,8 @@ namespace Remotely.Desktop.Core.Services
                         Left = screenBounds.Left,
                         Top = screenBounds.Top,
                         Width = screenBounds.Width,
-                        Height = screenBounds.Height
+                        Height = screenBounds.Height,
+                        Sequence = sequence++
                     });
                 }
 
@@ -119,7 +125,7 @@ namespace Remotely.Desktop.Core.Services
                     return;
                 }
 
-                _ = Task.Run(() => CastScreen(screenCastRequest, viewer, 0));
+                _ = Task.Run(() => CastScreen(screenCastRequest, viewer, sequence));
             }
             catch (Exception ex)
             {
