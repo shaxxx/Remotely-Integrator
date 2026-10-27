@@ -1,6 +1,9 @@
 # Invoke-RemotelyApiCheck.ps1
 # Izvrsava se na razvojnom racunalu (PowerShell 7). Radi iste pozive kao skill, u oba formata zaglavlja.
-# Kljuc se cita iz varijabli okoline REMOTELY_API_KEY_ID i REMOTELY_API_KEY i nikad se ne ispisuje.
+# Izvor kljuca (prvi koji vrijedi):
+#   1. varijable okoline REMOTELY_API_KEY_ID i REMOTELY_API_KEY, ako su OBJE postavljene (explicitna zamjena)
+#   2. config skilla ~/.remotely-skill/config.json: remotely.apiKeyId i remotely.apiKey (JSON, moze imati UTF-8 BOM)
+# Config se samo cita, nikad se ne mijenja. Kljuc, kljuc-id i vrijednosti iz configa se nikad ne ispisuju.
 #
 # Kodiranje: datoteka je ASCII; hrvatska slova grade se iz code pointova ([char]0x010D ...), pa
 # rezultat ne ovisi o tome kako PowerShell 5.1/7 ili editor cita datoteku.
@@ -10,13 +13,56 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-$keyId  = $env:REMOTELY_API_KEY_ID
-$secret = $env:REMOTELY_API_KEY
-if ([string]::IsNullOrWhiteSpace($keyId) -or [string]::IsNullOrWhiteSpace($secret)) {
-    Write-Error 'Nedostaju varijable okoline REMOTELY_API_KEY_ID i/ili REMOTELY_API_KEY.'
+# Vraca objekt { Ok, Source, KeyId, Secret, Error }. Greske su fiksni tekstovi bez vrijednosti iz configa;
+# iz iznimki se ispisuje samo tip. Ne pise nista.
+function Get-ApiKey([string]$ConfigPath) {
+    function Fail([string]$Message) {
+        [pscustomobject]@{ Ok = $false; Source = $null; KeyId = $null; Secret = $null; Error = $Message }
+    }
+
+    $envId     = $env:REMOTELY_API_KEY_ID
+    $envSecret = $env:REMOTELY_API_KEY
+    if (-not [string]::IsNullOrWhiteSpace($envId) -and -not [string]::IsNullOrWhiteSpace($envSecret)) {
+        return [pscustomobject]@{ Ok = $true; Source = 'env'; KeyId = $envId; Secret = $envSecret; Error = $null }
+    }
+
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
+        return Fail 'config ne postoji (~/.remotely-skill/config.json)'
+    }
+    try {
+        $raw = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8
+    } catch {
+        return Fail "config ne moze se procitati ($($_.Exception.GetType().Name))"
+    }
+    if ($raw) { $raw = $raw.TrimStart([char]0xFEFF) }   # BOM, ako ga ima
+    try {
+        $cfg = $raw | ConvertFrom-Json
+    } catch {
+        return Fail "config nije valjan JSON ($($_.Exception.GetType().Name))"
+    }
+    $section = $cfg.remotely
+    $id      = $section.apiKeyId
+    $secret  = $section.apiKey
+    if (-not ($id -is [string]) -or -not ($secret -is [string]) -or
+        [string]::IsNullOrWhiteSpace($id) -or [string]::IsNullOrWhiteSpace($secret)) {
+        return Fail 'u configu nema remotely.apiKeyId/apiKey'
+    }
+    [pscustomobject]@{ Ok = $true; Source = 'config'; KeyId = $id; Secret = $secret; Error = $null }
+}
+
+$key = Get-ApiKey (Join-Path $HOME '.remotely-skill/config.json')
+if (-not $key.Ok) {
+    Write-Host "GRESKA: $($key.Error)"
     exit 2
 }
+$keyId  = $key.KeyId
+$secret = $key.Secret
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)  # da se hrvatska slova ispisu ispravno
+if ($key.Source -eq 'env') {
+    Write-Host 'Kljuc: iz varijabli okoline'
+} else {
+    Write-Host 'Kljuc: iz configa skilla (~/.remotely-skill/config.json)'
+}
 $BaseUrl = $BaseUrl.TrimEnd('/')
 
 function U([int[]]$cp) { -join ($cp | ForEach-Object { [char]$_ }) }
