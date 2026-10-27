@@ -114,7 +114,8 @@ function Invoke-Api([string]$Method, [string]$Path, [string]$Auth, [string]$Body
 
 function New-Marker([int]$n) { 'rac-{0:x8}-{1}' -f (Get-Random -Minimum 0 -Maximum ([int]::MaxValue)), $n }
 
-# Tri naredbe; svaka ima jedinstven marker u izlazno neutralnom prefiksu.
+# Tri naredbe; svaka ima jedinstven marker u izlazno neutralnom prefiksu (WinPS: $null = '<m>'; CMD: set _m=<m>& ,
+# bez razmaka prije &, inace bi se razmak ubacio u vrijednost; 'rem' se ne koristi jer guta ostatak retka).
 function New-Commands([int]$baseN) {
     $m1 = New-Marker ($baseN + 1); $m2 = New-Marker ($baseN + 2); $m3 = New-Marker ($baseN + 3)
     $ps = "Write-Output '$lower $upper'"
@@ -122,7 +123,7 @@ function New-Commands([int]$baseN) {
     $wrapped = "& ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$b64'))))"
     @(
         @{ Label = 'WinPS-raw'; Shell = 'WinPS'; Marker = $m1; Sent = "`$null = '$m1'; $ps";      Expected = "$lower $upper" },
-        @{ Label = 'CMD-raw';   Shell = 'CMD';   Marker = $m2; Sent = "rem $m2 & echo $lower";    Expected = $lower },
+        @{ Label = 'CMD-raw';   Shell = 'CMD';   Marker = $m2; Sent = "set _m=$m2& echo $lower"; Expected = $lower },
         @{ Label = 'WinPS-b64'; Shell = 'WinPS'; Marker = $m3; Sent = "`$null = '$m3'; $wrapped"; Expected = "$lower $upper" }
     )
 }
@@ -174,10 +175,13 @@ foreach ($h in $headers) {
                     $hits = @($all | Where-Object {
                         $_.deviceID -and ([string]$_.deviceID).Equals($DeviceId, [StringComparison]::OrdinalIgnoreCase) -and
                         $_.scriptInput -and ([string]$_.scriptInput).Contains($c.Marker, [StringComparison]::Ordinal) })
-                    if ($hits.Count) {
-                        $found = if ($hits[0].PSObject.Properties['timestamp']) {
-                            $hits | Sort-Object { [DateTime]$_.timestamp } -Descending | Select-Object -First 1
-                        } else { $hits[-1] }
+                    if ($hits.Count -eq 1) { $found = $hits[0] }
+                    elseif ($hits.Count -gt 1) {
+                        # nepravilan timestamp = najstariji; nikad ne baca iznimku
+                        $found = $hits | Sort-Object {
+                            $d = [DateTime]::MinValue
+                            if ($_.PSObject.Properties['timestamp'] -and [DateTime]::TryParse([string]$_.timestamp, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind, [ref]$d)) { $d } else { [DateTime]::MinValue }
+                        } -Descending | Select-Object -First 1
                     }
                 } catch { $pollErr = "odgovor nije JSON ($($_.Exception.GetType().Name))" }
             }
