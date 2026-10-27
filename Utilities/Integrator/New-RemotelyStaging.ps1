@@ -41,6 +41,66 @@ function Copy-Dacl([string]$src, [string]$dst) {
     Set-Acl -LiteralPath $dst -AclObject $acl
 }
 
+# Dekodira bajtove (BOM-aware). Vraca objekt: Enc, BomLen, Text.
+function Read-DecodedFile([string]$path) {
+    $bytes = [System.IO.File]::ReadAllBytes($path)
+    $bomLen = 0
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        $bomLen = 3; $enc = New-Object System.Text.UTF8Encoding($true)
+    } elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+        $bomLen = 2; $enc = New-Object System.Text.UnicodeEncoding($false, $true)
+    } elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
+        $bomLen = 2; $enc = New-Object System.Text.UnicodeEncoding($true, $true)
+    } else {
+        $enc = New-Object System.Text.UTF8Encoding($false)
+    }
+    return New-Object psobject -Property @{ Enc = $enc; BomLen = $bomLen; Text = $enc.GetString($bytes, $bomLen, $bytes.Length - $bomLen) }
+}
+
+# Samo cita. Vraca listu problema (samo nazivi datoteka i brojevi, nikad sadrzaj).
+# Mode 'source': appsettings.json mora imati 'Database=Remotely;' tocno jednom.
+# Mode 'target': appsettings.json mora imati 'Database=Remotely_Test;' tocno jednom.
+# U svim ostalim *.json/*.config nema referenci na produkcijsku bazu ni ConnectionStrings__/environmentVariable.
+function Get-TokenFindings([string]$dir, [string]$mode) {
+    $problems = New-Object System.Collections.Generic.List[string]
+    $opt = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+    if ($mode -eq 'source') { $prodDb = 'Database\s*=\s*Remotely' } else { $prodDb = 'Database\s*=\s*Remotely(?![A-Za-z0-9_])' }
+    if ($mode -eq 'source') { $prodCat = 'Initial\s+Catalog\s*=\s*Remotely' } else { $prodCat = 'Initial\s+Catalog\s*=\s*Remotely(?![A-Za-z0-9_])' }
+    $root = (Get-Item -LiteralPath $dir).FullName.TrimEnd('\')
+    $files = Get-ChildItem -LiteralPath $dir -Recurse -Force -File |
+        Where-Object { $_.Extension -ieq '.json' -or $_.Extension -ieq '.config' }
+    $sawSettings = $false
+    foreach ($f in $files) {
+        $rel = $f.FullName.Substring($root.Length).TrimStart('\')
+        $text = (Read-DecodedFile $f.FullName).Text
+        $nDb  = [regex]::Matches($text, $prodDb, $opt).Count
+        $nCat = [regex]::Matches($text, $prodCat, $opt).Count
+        $nEnv = [regex]::Matches($text, 'ConnectionStrings__', $opt).Count
+        $nEnvEl = 0
+        if ($f.Name -ieq 'web.config') { $nEnvEl = [regex]::Matches($text, '<environmentVariable', $opt).Count }
+        if ($f.FullName -ieq (Join-Path $root 'appsettings.json')) {
+            $sawSettings = $true
+            if ($mode -eq 'source') {
+                $nExact = ([regex]::Matches($text, [regex]::Escape('Database=Remotely;'))).Count
+                if ($nExact -ne 1 -or $nDb -ne 1) { $problems.Add("$rel : 'Database=Remotely;' tocno=$nExact, sve Database=Remotely*=$nDb (ocekivano 1 i 1)") }
+            } else {
+                $nTest = ([regex]::Matches($text, [regex]::Escape('Database=Remotely_Test;'))).Count
+                if ($nTest -ne 1) { $problems.Add("$rel : 'Database=Remotely_Test;' = $nTest (ocekivano 1)") }
+                if ($nDb -ne 0) { $problems.Add("$rel : reference na produkcijsku bazu (Database)=$nDb (ocekivano 0)") }
+            }
+            if ($nCat -ne 0) { $problems.Add("$rel : Initial Catalog=Remotely*=$nCat (ocekivano 0)") }
+            if ($nEnv -ne 0) { $problems.Add("$rel : ConnectionStrings__=$nEnv (ocekivano 0)") }
+        } else {
+            if ($nDb -ne 0)  { $problems.Add("$rel : Database=Remotely*=$nDb (ocekivano 0)") }
+            if ($nCat -ne 0) { $problems.Add("$rel : Initial Catalog=Remotely*=$nCat (ocekivano 0)") }
+            if ($nEnv -ne 0) { $problems.Add("$rel : ConnectionStrings__=$nEnv (ocekivano 0)") }
+            if ($nEnvEl -ne 0) { $problems.Add("$rel : <environmentVariable>=$nEnvEl (ocekivano 0)") }
+        }
+    }
+    if (-not $sawSettings) { $problems.Add("appsettings.json nije pronadjen") }
+    return ,$problems
+}
+
 function New-StagingPool([string]$name) {
     $null = New-WebAppPool -Name $name
     $created.Add("pool $name")
@@ -65,6 +125,12 @@ foreach ($s in $ProdPath, $ProdToken) {
 }
 $srcSettings = Join-Path $ProdToken 'appsettings.json'
 if (-not (Test-Path -LiteralPath $srcSettings)) { Fail "izvor $srcSettings ne postoji." }
+$srcProblems = Get-TokenFindings $ProdToken 'source'
+if ($srcProblems.Count -gt 0) {
+    Write-Output "Izvorna token mapa ne zadovoljava preduvjete (samo nazivi i brojevi):"
+    foreach ($pr in $srcProblems) { Write-Output "  - $pr" }
+    Fail "izvorna token konfiguracija nije ocekivana; nista nije stvoreno."
+}
 
 try {
     # ---- Mape ----
@@ -81,19 +147,9 @@ try {
 
     # ---- appsettings.json: Database=Remotely; -> Database=Remotely_Test; ----
     $cfgPath = Join-Path $TokenPath 'appsettings.json'
-    $bytes = [System.IO.File]::ReadAllBytes($cfgPath)
-    $bomLen = 0
-    $enc = $null
-    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
-        $bomLen = 3; $enc = New-Object System.Text.UTF8Encoding($true)
-    } elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
-        $bomLen = 2; $enc = New-Object System.Text.UnicodeEncoding($false, $true)
-    } elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
-        $bomLen = 2; $enc = New-Object System.Text.UnicodeEncoding($true, $true)
-    } else {
-        $enc = New-Object System.Text.UTF8Encoding($false)
-    }
-    $text = $enc.GetString($bytes, $bomLen, $bytes.Length - $bomLen)
+    $df = Read-DecodedFile $cfgPath
+    $enc = $df.Enc
+    $text = $df.Text
     $needle = 'Database=Remotely;'
     $count = ([regex]::Matches($text, [regex]::Escape($needle))).Count
     if ($count -ne 1) { throw "u appsettings.json ocekivano tocno 1 pojavljivanje zamjene, nadjeno $count." }
@@ -105,6 +161,12 @@ try {
     [Array]::Copy($body, 0, $out, $preamble.Length, $body.Length)
     [System.IO.File]::WriteAllBytes($cfgPath, $out)
     Write-Output "appsettings.json u kopiji: baza zamijenjena (vrijednost se ne ispisuje)."
+    $tgtProblems = Get-TokenFindings $TokenPath 'target'
+    if ($tgtProblems.Count -gt 0) {
+        foreach ($pr in $tgtProblems) { Write-Output "  - $pr" }
+        throw "kopija token aplikacije jos upucuje na produkcijsku bazu (vidi gore, samo brojevi)."
+    }
+    Write-Output "Provjera kopije: nema referenci na produkcijsku bazu."
 
     # ---- ACL (samo DACL) ----
     Copy-Dacl $ProdPath $SitePath
