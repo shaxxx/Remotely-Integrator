@@ -19,6 +19,11 @@ var startMenuDraggingY;
 // Long-press na dodir (iz immense/RemoteControl): preglednik sam okida "contextmenu" nakon
 // dugog dodira; pomak veći od LongPressMoveTolerance piksela pretvara ga u povlačenje.
 const LongPressMoveTolerance = 5;
+// iOS Safari ne okida "contextmenu" na dugi dodir, pa isto stanje ulazimo vlastitim timerom.
+const LongPressFallbackMs = 700;
+var longPressFallbackTimeout = -1;
+var fallbackStartClientX;
+var fallbackStartClientY;
 var longPressStarted;
 var longPressStartX;
 var longPressStartY;
@@ -260,11 +265,25 @@ export function ApplyInputHandlers() {
             if (currentTouchCount > 1) {
                 cancelNextViewerClick = true;
                 // Drugi prst prekida long-press / povlačenje; ako je tipka pritisnuta, pusti je.
-                if (isDragging && !ViewerApp.ViewOnlyMode) {
-                    ViewerApp.MessageSender.SendMouseUp(0, lastDragPercentX, lastDragPercentY);
-                }
+                cancelLongPressFallback();
+                releaseDragIfNeeded(lastDragPercentX, lastDragPercentY);
                 longPressStarted = false;
                 isDragging = false;
+            }
+            else if (currentTouchCount == 1) {
+                // Svaki novi dodir jednim prstom počinje čisto.
+                cancelLongPressFallback();
+                releaseDragIfNeeded(lastDragPercentX, lastDragPercentY);
+                longPressStarted = false;
+                isDragging = false;
+                if (!ViewerApp.ViewOnlyMode) {
+                    fallbackStartClientX = e.touches[0].clientX;
+                    fallbackStartClientY = e.touches[0].clientY;
+                    longPressFallbackTimeout = window.setTimeout(() => {
+                        longPressFallbackTimeout = -1;
+                        enterLongPress(viewer, fallbackStartClientX, fallbackStartClientY);
+                    }, LongPressFallbackMs);
+                }
             }
             if (currentTouchCount == 2) {
                 lastScrollTouchY1 = e.touches[0].pageY;
@@ -284,6 +303,11 @@ export function ApplyInputHandlers() {
         });
         viewer.addEventListener("touchmove", function (e) {
             currentTouchCount = e.touches.length;
+            if (longPressFallbackTimeout > -1 &&
+                (e.touches.length != 1 ||
+                    GetDistanceBetween(fallbackStartClientX, fallbackStartClientY, e.touches[0].clientX, e.touches[0].clientY) > LongPressMoveTolerance)) {
+                cancelLongPressFallback();
+            }
             if (longPressStarted || isDragging) {
                 e.preventDefault();
             }
@@ -309,13 +333,18 @@ export function ApplyInputHandlers() {
                 let touchMove2 = lastScrollTouchY2 - e.touches[1].pageY;
                 if (!isPinchZooming && (isScrolling || touchMove1 * touchMove2 > 0)) {
                     // Both touch points are moving in the same direction.  We're doing a scroll.
+                    if (ViewerApp.ViewOnlyMode) {
+                        // View-only: ni pomak miša ni kotačić.
+                        isScrolling = true;
+                        return;
+                    }
                     if (!isScrolling) {
                         // If this is the start of scrolling, move the mouse to our touch point so
                         // the scroll wheel action will target the intended element on screen.
                         var screenViewerLeft = viewer.getBoundingClientRect().left;
                         var screenViewerTop = viewer.getBoundingClientRect().top;
-                        var pagePercentX = (e.touches[0].pageX - screenViewerLeft) / viewer.clientWidth;
-                        var pagePercentY = (e.touches[0].pageY - screenViewerTop) / viewer.clientHeight;
+                        var pagePercentX = (e.touches[0].clientX - screenViewerLeft) / viewer.clientWidth;
+                        var pagePercentY = (e.touches[0].clientY - screenViewerTop) / viewer.clientHeight;
                         ViewerApp.MessageSender.SendMouseMove(pagePercentX, pagePercentY);
                     }
                     isScrolling = true;
@@ -376,8 +405,8 @@ export function ApplyInputHandlers() {
                 }
                 var screenViewerLeft = viewer.getBoundingClientRect().left;
                 var screenViewerTop = viewer.getBoundingClientRect().top;
-                var pagePercentX = (e.touches[0].pageX - screenViewerLeft) / viewer.clientWidth;
-                var pagePercentY = (e.touches[0].pageY - screenViewerTop) / viewer.clientHeight;
+                var pagePercentX = (e.touches[0].clientX - screenViewerLeft) / viewer.clientWidth;
+                var pagePercentY = (e.touches[0].clientY - screenViewerTop) / viewer.clientHeight;
                 lastDragPercentX = pagePercentX;
                 lastDragPercentY = pagePercentY;
                 ViewerApp.MessageSender.SendMouseMove(pagePercentX, pagePercentY);
@@ -385,6 +414,7 @@ export function ApplyInputHandlers() {
         });
         viewer.addEventListener("touchend", function (e) {
             currentTouchCount = e.touches.length;
+            cancelLongPressFallback();
             if (currentTouchCount == 0) {
                 cancelNextViewerClick = false;
                 isPinchZooming = false;
@@ -402,24 +432,19 @@ export function ApplyInputHandlers() {
                 ViewerApp.MessageSender.SendMouseDown(2, percentX, percentY);
                 ViewerApp.MessageSender.SendMouseUp(2, percentX, percentY);
             }
-            if (isDragging && !ViewerApp.ViewOnlyMode) {
-                ViewerApp.MessageSender.SendMouseUp(0, percentX, percentY);
-            }
+            // Puštanje tipke i kad je view-only uključen usred povlačenja.
+            releaseDragIfNeeded(percentX, percentY);
             longPressStarted = false;
             isDragging = false;
         });
+        viewer.addEventListener("touchcancel", function (e) {
+            currentTouchCount = e.touches.length;
+            resetTouchState();
+        });
         viewer.addEventListener("contextmenu", (ev) => {
             ev.preventDefault();
-            if (ViewerApp.ViewOnlyMode) {
-                return;
-            }
             if (currentPointerDevice == "touch") {
-                // Početak desnog klika ili povlačenja: prvo pomakni miš na točku dodira.
-                var rect = viewer.getBoundingClientRect();
-                longPressStartX = ev.clientX - rect.left;
-                longPressStartY = ev.clientY - rect.top;
-                ViewerApp.MessageSender.SendMouseMove(longPressStartX / viewer.clientWidth, longPressStartY / viewer.clientHeight);
-                longPressStarted = true;
+                enterLongPress(viewer, ev.clientX, ev.clientY);
             }
         });
         viewer.addEventListener("wheel", function (e) {
@@ -506,6 +531,7 @@ export function ApplyInputHandlers() {
         ViewerApp.MessageSender.SendKeyUp(e.key);
     });
     window.addEventListener("blur", () => {
+        resetTouchState();
         if (ViewerApp.ViewOnlyMode) {
             return;
         }
@@ -546,5 +572,38 @@ function removeMouseButtonWindowListeners(ev) {
     window.removeEventListener("mousemove", moveMenuButton);
     window.removeEventListener("mouseup", removeMouseButtonWindowListeners);
     window.removeEventListener("mouseleave", removeMouseButtonWindowListeners);
+}
+function cancelLongPressFallback() {
+    if (longPressFallbackTimeout > -1) {
+        window.clearTimeout(longPressFallbackTimeout);
+        longPressFallbackTimeout = -1;
+    }
+}
+// Ulazak u stanje long-pressa (zajednički za "contextmenu" i iOS timer). Ne ulazi dvaput.
+function enterLongPress(viewer, clientX, clientY) {
+    cancelLongPressFallback();
+    if (longPressStarted || ViewerApp.ViewOnlyMode) {
+        return;
+    }
+    // Početak desnog klika ili povlačenja: prvo pomakni miš na točku dodira.
+    var rect = viewer.getBoundingClientRect();
+    longPressStartX = clientX - rect.left;
+    longPressStartY = clientY - rect.top;
+    ViewerApp.MessageSender.SendMouseMove(longPressStartX / viewer.clientWidth, longPressStartY / viewer.clientHeight);
+    longPressStarted = true;
+}
+// Puštanje pritisnute tipke je sigurnosna radnja: šalje se i ako je view-only uključen usred povlačenja.
+function releaseDragIfNeeded(percentX, percentY) {
+    if (isDragging) {
+        ViewerApp.MessageSender.SendMouseUp(0, percentX, percentY);
+    }
+}
+function resetTouchState() {
+    cancelLongPressFallback();
+    releaseDragIfNeeded(lastDragPercentX, lastDragPercentY);
+    longPressStarted = false;
+    isDragging = false;
+    isScrolling = false;
+    isPinchZooming = false;
 }
 //# sourceMappingURL=InputEventHandlers.js.map

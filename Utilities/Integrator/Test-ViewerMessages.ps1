@@ -20,7 +20,9 @@ $allowed = @(
 )
 
 $failed = $false
+$scanned = 0
 foreach ($f in Get-ChildItem -Path $srcDir -Filter *.ts -Recurse) {
+    $scanned++
     $text = Get-Content -LiteralPath $f.FullName -Raw
     foreach ($m in [regex]::Matches($text, 'MessageSender\.(\w+)\s*\(')) {
         $name = $m.Groups[1].Value
@@ -29,6 +31,11 @@ foreach ($f in Get-ChildItem -Path $srcDir -Filter *.ts -Recurse) {
             $failed = $true
         }
     }
+}
+
+if ($scanned -eq 0) {
+    Write-Host "FAIL: nijedna .ts datoteka nije skenirana u $srcDir"
+    $failed = $true
 }
 
 Push-Location $repo
