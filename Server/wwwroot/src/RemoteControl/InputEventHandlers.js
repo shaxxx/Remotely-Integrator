@@ -505,12 +505,18 @@ export function ApplyInputHandlers() {
         window.clearTimeout(keydownTimer);
         return true;
     };
+    // SendKeys on the desktop treats these characters as commands; braces make them literal.
+    const escapeSendKeys = (text) => text.replace(/[+^%~(){}[\]]/g, "{$&}");
     const flushTouchText = (text) => {
         resetTouchField();
         if (ViewerApp.ViewOnlyMode || !text) {
             return;
         }
-        ViewerApp.MessageSender.SendClipboardTransfer(text, true);
+        ViewerApp.MessageSender.SendClipboardTransfer(escapeSendKeys(text), true);
+        // The desktop types the text with SendKeys, which leaves a hook on its input thread.
+        // The next input action then fails the desktop switch and is dropped while the
+        // thread is replaced.  This key-up absorbs that drop; when it does run it is harmless.
+        ViewerApp.MessageSender.SendKeyUp("Shift");
     };
     resetTouchField();
     TouchKeyboardInput.addEventListener("focus", () => {
