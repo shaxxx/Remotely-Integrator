@@ -6,7 +6,7 @@ import { Screen2DContext } from "./UI.js";
 
 const BitmapQueue: Array <CompletedFrame> =[];
 const ImagePartials: Record <string, Array<Uint8Array>> = { };
-let CanvasLock: number = 1;
+let isProcessing: boolean = false;
 let NextSequence: number = 0;
 
 export function HandleCaptureReceived(captureFrame: CaptureFrameDto) {
@@ -23,16 +23,22 @@ export function HandleCaptureReceived(captureFrame: CaptureFrameDto) {
         delete ImagePartials[captureFrame.Sequence];
 
         createImageBitmap(completedFrame).then(bitmap => {
+            return bitmap;
+        }, ex => {
+            // Undecodable frame is still queued (not drawable), so it gets acked and the sequence advances.
+            console.error(ex);
+            return null as ImageBitmap;
+        }).then(bitmap => {
             BitmapQueue.push({
                 ImageContent: bitmap,
                 FrameData: captureFrame
             });
 
-            if (CanvasLock < 1) {
+            if (isProcessing) {
                 return;
             }
 
-            CanvasLock--;
+            isProcessing = true;
 
             processQueue();
         });
@@ -51,46 +57,64 @@ export function HandleCaptureReceived(captureFrame: CaptureFrameDto) {
 }
 
 
+// Processing is event-driven (promise callbacks) on purpose: timers are throttled to once
+// per minute in hidden tabs, which delays the frame acks and makes the desktop end the session.
 function processQueue() {
     try {
-        if (BitmapQueue.length > 0) {
-            let completedFrame = BitmapQueue.shift();
-            let content = completedFrame.ImageContent;
-            let data = completedFrame.FrameData;
+        if (BitmapQueue.length == 0) {
+            isProcessing = false;
+            return;
+        }
 
-            if (data.Sequence == 0) {
-                NextSequence = 0;
-                BitmapQueue.splice(0);
-            }
+        BitmapQueue.sort((a, b) => a.FrameData.Sequence - b.FrameData.Sequence);
+        let completedFrame = BitmapQueue.shift();
+        let content = completedFrame.ImageContent;
+        let data = completedFrame.FrameData;
 
-            if (data.Sequence != NextSequence) {
-                console.debug("Frame out of sequence.  Putting it back in queue.")
-                BitmapQueue.push(completedFrame);
-                BitmapQueue.sort((a, b) => a.FrameData.Sequence - b.FrameData.Sequence);
-                window.setTimeout(() => processQueue(), 1);
-                return;
-            }
+        if (data.Sequence == 0) {
+            NextSequence = 0;
+            BitmapQueue.splice(0);
+        }
 
+        if (data.Sequence != NextSequence) {
+            console.debug("Frame out of sequence.  Putting it back in queue.")
+            BitmapQueue.push(completedFrame);
+            // The next arriving frame restarts processing.
+            isProcessing = false;
+            return;
+        }
+
+        let drawn: Promise<void> = content ?
             createImageBitmap(content).then(bitmap => {
-                Screen2DContext.drawImage(bitmap,
-                    data.Left,
-                    data.Top,
-                    data.Width,
-                    data.Height);
+                try {
+                    Screen2DContext.drawImage(bitmap,
+                        data.Left,
+                        data.Top,
+                        data.Width,
+                        data.Height);
+                }
+                finally {
+                    bitmap.close();
+                }
+            }) :
+            Promise.resolve();
 
-                bitmap.close();
-
+        drawn.catch(ex => {
+            console.error(ex);
+        }).then(() => {
+            try {
                 ViewerApp.MessageSender.SendFrameReceived();
                 NextSequence = data.Sequence + 1;
-                window.setTimeout(() => processQueue(), 1);
-            })
-        }
-        else {
-            CanvasLock++;
-        }
+            }
+            catch (ex) {
+                NextSequence = data.Sequence + 1;
+                console.error(ex);
+            }
+            processQueue();
+        });
     }
     catch (ex) {
-        CanvasLock = 1;
+        isProcessing = false;
         console.error(ex);
     }
 }
