@@ -244,6 +244,13 @@ namespace Remotely.Server
         }
 
 
+        // Production parity: static files are always sent with no-cache, so browsers
+        // revalidate (ETag/Last-Modified) viewer modules after a deploy.
+        private static void AddNoCacheHeader(StaticFileResponseContext ctx)
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
+        }
+
         internal static void ConfigureStaticFiles(IApplicationBuilder app, IWebHostEnvironment env)
         {
             var provider = new FileExtensionContentTypeProvider();
@@ -254,7 +261,7 @@ namespace Remotely.Server
             provider.Mappings[".appimage"] = "application/octet-stream";
             provider.Mappings[".zip"] = "application/octet-stream";
             provider.Mappings[".config"] = "application/octet-stream";
-            app.UseStaticFiles();
+            app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = AddNoCacheHeader });
             var contentPath = Path.Combine(env.WebRootPath, "Content");
 
             if (Directory.Exists(contentPath))
@@ -265,7 +272,8 @@ namespace Remotely.Server
                     ServeUnknownFileTypes = true,
                     RequestPath = new PathString("/Content"),
                     ContentTypeProvider = provider,
-                    DefaultContentType = "application/octet-stream"
+                    DefaultContentType = "application/octet-stream",
+                    OnPrepareResponse = AddNoCacheHeader
                 });
             }
 
@@ -276,7 +284,8 @@ namespace Remotely.Server
                 {
                     FileProvider = new PhysicalFileProvider(Path.Combine(env.ContentRootPath, @".well-known")),
                     RequestPath = new PathString("/.well-known"),
-                    ServeUnknownFileTypes = true
+                    ServeUnknownFileTypes = true,
+                    OnPrepareResponse = AddNoCacheHeader
                 });
             }
         }

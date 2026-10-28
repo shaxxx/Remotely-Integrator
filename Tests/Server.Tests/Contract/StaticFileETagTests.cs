@@ -46,6 +46,7 @@ namespace Remotely.Server.Tests.Contract
                 {
                     Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
                     Assert.AreEqual(expectedETag, response.Headers.ETag?.ToString());
+                    Assert.AreEqual("no-cache", response.Headers.CacheControl?.ToString());
                 }
 
                 using (var request = new HttpRequestMessage(HttpMethod.Head, "/Content/" + fileName))
@@ -54,6 +55,33 @@ namespace Remotely.Server.Tests.Contract
                     using var response = await client.SendAsync(request);
                     Assert.AreEqual(HttpStatusCode.NotModified, response.StatusCode);
                 }
+            }
+            finally
+            {
+                try { Directory.Delete(root, true); } catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) { }
+            }
+        }
+
+        [TestMethod]
+        public async Task WebRootFile_SendsNoCache_AndETag()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "RemotelyETag_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            try
+            {
+                File.WriteAllText(Path.Combine(root, "viewer.js"), "export const x = 1;");
+
+                var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root, WebRootPath = root });
+                builder.WebHost.UseTestServer();
+                await using var app = builder.Build();
+                Startup.ConfigureStaticFiles(app, app.Environment);
+                await app.StartAsync();
+                using var client = app.GetTestClient();
+
+                using var response = await client.GetAsync("/viewer.js");
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                Assert.AreEqual("no-cache", response.Headers.CacheControl?.ToString());
+                Assert.IsNotNull(response.Headers.ETag);
             }
             finally
             {
