@@ -16,33 +16,33 @@ Dvije su činjenice iz starog koda (nisu uvedene našim izmjenama). Prvo, stari 
 
 | # | stavka | očekivano | rezultat | napomena |
 |---|---|---|---|---|
-| 1.1 | Online status i heartbeat | Stroj je online na stagingu, `LastOnline` se osvježava | | |
-| 1.2 | `GET api/Devices/{id}` preko `Invoke-RemotelyApiCheck.ps1` | 200, `IsOnline` i `AgentVersion` zabilježeni, u oba formata zaglavlja | | |
-| 1.3 | `ExecuteCommand/WinPS` s `Write-Output 'čćžšđ ČĆŽŠĐ'` | `ExecuteCommand` kao na produkciji (sa starim agentom 404 nakon ~30 s), rezultat se nalazi u `GET api/ScriptResults`; `ScriptInput` točno jednak poslanom tekstu; `StandardOutput` zabilježen i jednak produkcijskom za isti stroj i naredbu (usporedba kad se IVICATEST vrati na produkciju); u oba formata zaglavlja | | |
-| 1.4 | `ExecuteCommand/CMD` s `echo čćžšđ` | `ExecuteCommand` kao na produkciji (sa starim agentom 404 nakon ~30 s), rezultat se nalazi u `GET api/ScriptResults`; `ScriptInput` točno jednak poslanom tekstu; `StandardOutput` zabilježen i jednak produkcijskom za isti stroj i naredbu (usporedba kad se IVICATEST vrati na produkciju); u oba formata zaglavlja | | |
-| 1.5 | Varijante zaglavlja koje šalju stvarni klijenti: razmaci oko vrijednosti, `basic` malim slovima, tajna s `+`, `/`, `=`, tajna s dvotočkom | Sve se autorizira (200); neispravan base64, prazno zaglavlje i pogrešan ključ daju 401 | | |
-| 1.6 | Remote control iz weba | Sesija se otvara, slika i unos rade | | |
-| 1.7 | Remote control iz testne Operative (`config.ini` s `BaseUrl` na staging) | Sesija se otvara, slika i unos rade | | |
-| 1.8 | "Integrator podrška" sa session ID-om preko `/RemoteControl` | Sesija se otvara na stagingu | | |
-| 1.9 | Chat | Poruke teku u oba smjera | | |
-| 1.10 | Prijenos datoteka u oba smjera | Datoteke stižu neoštećene (usporedba SHA-256) | | |
-| 1.11 | Prijenos datoteke od 50 MB kroz remote control | Ponaša se kao na produkciji (uspjeh ili ista poruka o ograničenju) | | |
-| 1.12 | Međuspremnik u oba smjera | Tekst se prenosi, uključujući hrvatska slova | | |
-| 1.13 | Ctrl+Alt+Del | Secure attention sequence radi | | |
-| 1.14 | UAC prompt | Prompt je vidljiv i može se potvrditi u sesiji | | |
-| 1.15 | Zaključani ekran | Sesija ostaje upotrebljiva, prijava iz sesije radi | | |
-| 1.16 | Više monitora (ako stroj ima više monitora) | Prebacivanje monitora radi | | |
-| 1.17 | Hrvatska slova u izlazu skripte kroz stari agent (`čćžšđ ČĆŽŠĐ`) i u tipkanju kroz remote control | Izlaz skripte: kao u 1.3/1.4 (usporedba s produkcijom; stari agent gubi `č`/`ć`/`đ`, vidi objašnjenje ispod Kruga 1); tipkanje i međuspremnik kroz remote control: znakovi stižu na ekran nepromijenjeni | | |
+| 1.1 | Online status i heartbeat | Stroj je online na stagingu, `LastOnline` se osvježava | OK | IVICATEST online na stagingu (agent 2021.10.10.1923), heartbeat radi. |
+| 1.2 | `GET api/Devices/{id}` preko `Invoke-RemotelyApiCheck.ps1` | 200, `IsOnline` i `AgentVersion` zabilježeni, u oba formata zaglavlja | OK | 200 u oba formata zaglavlja, `IsOnline=True`, `AgentVersion=2021.10.10.1923`; produkcijsko `Basic` zaglavlje daje 500, staging 200 (odjeljak 2 u `staging-krug1.md`). |
+| 1.3 | `ExecuteCommand/WinPS` s `Write-Output 'čćžšđ ČĆŽŠĐ'` | `ExecuteCommand` kao na produkciji (sa starim agentom 404 nakon ~30 s), rezultat se nalazi u `GET api/ScriptResults`; `ScriptInput` točno jednak poslanom tekstu; `StandardOutput` zabilježen i jednak produkcijskom za isti stroj i naredbu (usporedba kad se IVICATEST vrati na produkciju); u oba formata zaglavlja | OK (= produkcija) | 404 nakon 30,1 s kao na produkciji, rezultat u `ScriptResults`, `ScriptInput` točan, izlazi isti na stagingu i produkciji (odjeljak 2). |
+| 1.4 | `ExecuteCommand/CMD` s `echo čćžšđ` | `ExecuteCommand` kao na produkciji (sa starim agentom 404 nakon ~30 s), rezultat se nalazi u `GET api/ScriptResults`; `ScriptInput` točno jednak poslanom tekstu; `StandardOutput` zabilježen i jednak produkcijskom za isti stroj i naredbu (usporedba kad se IVICATEST vrati na produkciju); u oba formata zaglavlja | OK (= produkcija) | 404 nakon 30 s kao na produkciji, rezultat u `ScriptResults`, `ScriptInput` točan, izlaz `ccžšd` isti na oba servera (odjeljak 2). |
+| 1.5 | Varijante zaglavlja koje šalju stvarni klijenti: razmaci oko vrijednosti, `basic` malim slovima, tajna s `+`, `/`, `=`, tajna s dvotočkom | Sve se autorizira (200); neispravan base64, prazno zaglavlje i pogrešan ključ daju 401 | nije testirano | Ispitani su samo `raw` i `Basic` (200 na stagingu, `Basic` na produkciji 500); ostale varijante zaglavlja i 401 slučajevi nisu pokrenuti uživo, pokrivaju ih jedinični testovi (T3). |
+| 1.6 | Remote control iz weba | Sesija se otvara, slika i unos rade | OK | Sesija iz weba otvara se, slika i unos rade (stari desktop kao servis). |
+| 1.7 | Remote control iz testne Operative (`config.ini` s `BaseUrl` na staging) | Sesija se otvara, slika i unos rade | OK | Radi s `BaseUrl=https://remote-test.integrator.hr/api/` (završni `/api/` je obavezan, odjeljak 5). |
+| 1.8 | "Integrator podrška" sa session ID-om preko `/RemoteControl` | Sesija se otvara na stagingu | nalaz | Glavni nalaz kruga: prekid sesije kod novog desktopa (R18) i Chromeovo throttling kartice (K6); stari desktop radi, vidi odjeljak 3. |
+| 1.9 | Chat | Poruke teku u oba smjera | OK | Poruke teku u oba smjera, hrvatska slova ispravna. |
+| 1.10 | Prijenos datoteka u oba smjera | Datoteke stižu neoštećene (usporedba SHA-256) | OK | Prijenos datoteka u oba smjera radi, uključujući datoteku od 50 MB. |
+| 1.11 | Prijenos datoteke od 50 MB kroz remote control | Ponaša se kao na produkciji (uspjeh ili ista poruka o ograničenju) | OK | Datoteka od 50 MB (SHA-256 f72e406a...) prenesena kroz remote control. |
+| 1.12 | Međuspremnik u oba smjera | Tekst se prenosi, uključujući hrvatska slova | OK | Međuspremnik radi u oba smjera. |
+| 1.13 | Ctrl+Alt+Del | Secure attention sequence radi | OK | Ctrl+Alt+Del radi. |
+| 1.14 | UAC prompt | Prompt je vidljiv i može se potvrditi u sesiji | OK | Nakon uključivanja UAC prompta na IVICATEST (prije je bio tihi, EnableLUA s ConsentPromptBehaviorAdmin=0) prompt je vidljiv i potvrđuje se. |
+| 1.15 | Zaključani ekran | Sesija ostaje upotrebljiva, prijava iz sesije radi | OK | Zaključavanje kroz Ctrl+Alt+Del, Lock radi; Win+L zaključava korisnikov vlastiti PC (isto i u staroj verziji). |
+| 1.16 | Više monitora (ako stroj ima više monitora) | Prebacivanje monitora radi | N/A | IVICATEST ima jedan monitor. |
+| 1.17 | Hrvatska slova u izlazu skripte kroz stari agent (`čćžšđ ČĆŽŠĐ`) i u tipkanju kroz remote control | Izlaz skripte: kao u 1.3/1.4 (usporedba s produkcijom; stari agent gubi `č`/`ć`/`đ`, vidi objašnjenje ispod Kruga 1); tipkanje i međuspremnik kroz remote control: znakovi stižu na ekran nepromijenjeni | OK (= produkcija) | Slova `č`, `ć`, `Č`, `Ć` pri tipkanju stižu kao `c`/`C`, isto na produkciji (stari desktop); izlaz skripte isti kao na produkciji (odjeljci 2 i 4). |
 
 ### K1. Server (primjenjive provjere)
 
 | # | stavka | očekivano | rezultat | napomena |
 |---|---|---|---|---|
-| 1.S1 | P4: `HEAD` na `Remotely-Win10-x64.zip` i `-x86.zip` | `ETag` jednak osnovici u `baseline-production.md` (`"1d7c3f840097221"`, `"1d7c3f84e574327"`) | | |
-| 1.S2 | Stari agent na stagingu ne pokreće ažuriranje | Agent ostaje na svojoj verziji (dobiva 304) | | |
-| 1.S3 | `__EFMigrationsHistory` prije i nakon starta | Isti popis i broj migracija kao u `baseline-production.md` | | |
-| 1.S4 | SHA-256 snimke sheme baze prije i nakon starta | Jednak osnovici u `baseline-production.md` | | |
-| 1.S5 | Logovi servera | Bez grešaka | | |
+| 1.S1 | P4: `HEAD` na `Remotely-Win10-x64.zip` i `-x86.zip` | `ETag` jednak osnovici u `baseline-production.md` (`"1d7c3f840097221"`, `"1d7c3f84e574327"`) | OK | ETag x64 i x86 jednaki osnovici. |
+| 1.S2 | Stari agent na stagingu ne pokreće ažuriranje | Agent ostaje na svojoj verziji (dobiva 304) | OK | Log agenta: "Service Updater: Version is current."; `etag.txt` nepromijenjen, agent ostaje 2021.10.10.1923. |
+| 1.S3 | `__EFMigrationsHistory` prije i nakon starta | Isti popis i broj migracija kao u `baseline-production.md` | OK | 12 migracija, popis jednak osnovici. |
+| 1.S4 | SHA-256 snimke sheme baze prije i nakon starta | Jednak osnovici u `baseline-production.md` | OK | 179 redaka, SHA-256 `bc7fa1b7...` jednak osnovici. |
+| 1.S5 | Logovi servera | Bez grešaka | nalaz | Bez grešaka kod sesija, osim pada Blazor kruga u `DeviceCard.razor:234` (postojeća greška, odjeljak 4). |
 
 ## Krug 2: .NET 10 build s K1-K4 i Tokmak s K5
 
