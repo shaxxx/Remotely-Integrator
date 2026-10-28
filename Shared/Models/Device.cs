@@ -101,7 +101,7 @@ namespace Remotely.Shared.Models
 
         [Sortable]
         [Display(Name = "Memory Used %")]
-        public double UsedMemoryPercent => UsedMemory / TotalMemory;
+        public double UsedMemoryPercent => SafePercent(UsedMemory, TotalMemory);
 
         [Sortable]
         [Display(Name = "Storage Used")]
@@ -109,8 +109,19 @@ namespace Remotely.Shared.Models
 
         [Sortable]
         [Display(Name = "Storage Used %")]
-        public double UsedStoragePercent => UsedStorage / TotalStorage;
+        public double UsedStoragePercent => SafePercent(UsedStorage, TotalStorage);
 
         public WebRtcSetting WebRtcSetting { get; set; }
+
+        // 0 umjesto Infinity/NaN: System.Text.Json ne može serijalizirati nekonačne vrijednosti.
+        private static double SafePercent(double used, double total)
+        {
+            if (total <= 0)
+            {
+                return 0;
+            }
+            var result = used / total;
+            return double.IsFinite(result) ? result : 0;
+        }
     }
 }
