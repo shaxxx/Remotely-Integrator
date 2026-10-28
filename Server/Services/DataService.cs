@@ -1969,15 +1969,37 @@ namespace Remotely.Server.Services
             dbContext.SaveChanges();
         }
 
+        /// <summary>
+        /// Secrets created on ASP.NET Core 5/6 use 10,000 PBKDF2 iterations, while the current default is 100,000,
+        /// so a correct old secret verifies as SuccessRehashNeeded.  That is still a valid secret.  The stored
+        /// hash is intentionally not upgraded, so the database stays readable by an older server (rollback).
+        /// </summary>
+        internal static bool IsApiSecretValid(string hashedSecret, string apiSecret)
+        {
+            if (string.IsNullOrEmpty(hashedSecret) || apiSecret is null)
+            {
+                return false;
+            }
+
+            try
+            {
+                var result = new PasswordHasher<RemotelyUser>().VerifyHashedPassword(null, hashedSecret, apiSecret);
+                return result == PasswordVerificationResult.Success ||
+                    result == PasswordVerificationResult.SuccessRehashNeeded;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+        }
+
         public bool ValidateApiKey(string keyId, string apiSecret, string requestPath, string remoteIP)
         {
             using var dbContext = _appDbFactory.GetContext();
 
-            var hasher = new PasswordHasher<RemotelyUser>();
             var token = dbContext.ApiTokens.FirstOrDefault(x => x.ID == keyId);
 
-            var isValid = token is not null &&
-                hasher.VerifyHashedPassword(null, token.Secret, apiSecret) == PasswordVerificationResult.Success;
+            var isValid = token is not null && IsApiSecretValid(token.Secret, apiSecret);
 
             if (token is not null)
             {
