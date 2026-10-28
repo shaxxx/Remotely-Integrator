@@ -16,7 +16,7 @@
     BlockInputButton,
     InviteButton,
     KeyboardButton,
-    TouchKeyboardTextArea,
+    TouchKeyboardInput,
     MenuFrame,
     MenuButton,
     ScreenViewerWrapper,
@@ -93,7 +93,12 @@ export function ApplyInputHandlers() {
         ViewerApp.ViewOnlyMode = ViewOnlyButton.classList.contains("toggled");
     });
     TypeClipboardButton.addEventListener("click", (ev) => {
-        if (!navigator.clipboard.readText) {
+        if (!location.protocol.includes("https") &&
+            !location.origin.includes("localhost")) {
+            alert("Clipboard API only works on HTTPS or localhost.");
+        }
+
+        if (!navigator.clipboard?.readText) {
             alert("Clipboard access isn't supported on this browser.");
             return;
         }
@@ -204,8 +209,13 @@ export function ApplyInputHandlers() {
     });
     KeyboardButton.addEventListener("click", (ev) => {
         closeAllHorizontalBars(null);
-        TouchKeyboardTextArea.focus();
-        TouchKeyboardTextArea.setSelectionRange(TouchKeyboardTextArea.value.length, TouchKeyboardTextArea.value.length);
+        KeyboardButton.classList.toggle("toggled");
+        if (KeyboardButton.classList.contains("toggled")) {
+            TouchKeyboardInput.focus();
+        }
+        else {
+            TouchKeyboardInput.blur();
+        }
         MenuFrame.classList.remove("open");
         MenuButton.classList.remove("open");
     });
@@ -574,42 +584,45 @@ export function ApplyInputHandlers() {
     });
 
 
-    TouchKeyboardTextArea.addEventListener("input", (ev) => {
-        if (ViewerApp.ViewOnlyMode) {
+    TouchKeyboardInput.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === "Backspace") {
+            // These keys don't produce text in the input, so send them as key presses.
+            ev.preventDefault();
+            if (ViewerApp.ViewOnlyMode) {
+                return;
+            }
+            ViewerApp.MessageSender.SendKeyPress(ev.key);
+        }
+    });
+
+    TouchKeyboardInput.addEventListener("input", (ev) => {
+        const text = TouchKeyboardInput.value;
+        TouchKeyboardInput.value = "";
+
+        if (ViewerApp.ViewOnlyMode || !text) {
             return;
         }
 
-        if (TouchKeyboardTextArea.value.length == 1) {
-            ViewerApp.MessageSender.SendKeyPress("Backspace");
-        }
-        else if (TouchKeyboardTextArea.value.endsWith("\n")) {
-            ViewerApp.MessageSender.SendKeyPress("Enter");
-        }
-        else if (TouchKeyboardTextArea.value.endsWith(" ")) {
-            ViewerApp.MessageSender.SendKeyPress(" ");
-        }
-        else {
-            var input = TouchKeyboardTextArea.value.trim().substr(1);
-            for (var i = 0; i < input.length; i++) {
-                var character = input.charAt(i);
-                var sendShift = character.match(/[A-Z~!@#$%^&*()_+{}|<>?]/);
-                if (sendShift) {
-                    ViewerApp.MessageSender.SendKeyDown("Shift");
-                }
+        ViewerApp.MessageSender.SendClipboardTransfer(text, true);
+    });
 
-                ViewerApp.MessageSender.SendKeyPress(character);
-
-                if (sendShift) {
-                    ViewerApp.MessageSender.SendKeyUp("Shift");
-                }
-            }
+    TouchKeyboardInput.addEventListener("blur", (ev: FocusEvent) => {
+        // The keyboard stays open until the toggle button is pressed again.
+        // Don't steal focus from other form controls the user has moved to.
+        if (!KeyboardButton.classList.contains("toggled")) {
+            return;
         }
-
+        const next = ev.relatedTarget as HTMLElement;
+        if (next && next !== KeyboardButton && /^(INPUT|SELECT|TEXTAREA)$/.test(next.tagName)) {
+            return;
+        }
         window.setTimeout(() => {
-            TouchKeyboardTextArea.value = " #";
-            TouchKeyboardTextArea.setSelectionRange(TouchKeyboardTextArea.value.length, TouchKeyboardTextArea.value.length);
+            if (KeyboardButton.classList.contains("toggled")) {
+                TouchKeyboardInput.focus();
+            }
         });
     });
+
     WindowsSessionSelect.addEventListener("focus", () => {
         ViewerApp.MessageSender.GetWindowsSessions();
     });

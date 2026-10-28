@@ -40,6 +40,10 @@ button {
     font-size: .9em;
 }
 
+#keyboardButton.toggled {
+    background-color: #4a90d9;
+}
+
 #keyboardButton {
     position: fixed;
     top: 5px;
@@ -266,7 +270,7 @@ footer {
         margin-left: 10px;
     }
 
-#touchKeyboardTextArea {
+#touchKeyboardInput {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);

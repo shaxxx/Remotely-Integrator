@@ -1,4 +1,4 @@
-import { AudioButton, ChangeScreenButton, HorizontalBars, ScreenSelectBar, ClipboardTransferButton, ClipboardTransferBar, TypeClipboardButton, ConnectButton, CtrlAltDelButton, DisconnectButton, FileTransferButton, FileTransferInput, FitToScreenButton, ScreenViewer, BlockInputButton, InviteButton, KeyboardButton, TouchKeyboardTextArea, MenuFrame, MenuButton, ScreenViewerWrapper, WindowsSessionSelect, RecordSessionButton, DownloadRecordingButton, VideoScreenViewer, StreamVideoButton, FileTransferBar, FileUploadButtton, FileDownloadButton, UpdateStreamingToggled, ViewOnlyButton, FullScreenButton } from "./UI.js";
+import { AudioButton, ChangeScreenButton, HorizontalBars, ScreenSelectBar, ClipboardTransferButton, ClipboardTransferBar, TypeClipboardButton, ConnectButton, CtrlAltDelButton, DisconnectButton, FileTransferButton, FileTransferInput, FitToScreenButton, ScreenViewer, BlockInputButton, InviteButton, KeyboardButton, TouchKeyboardInput, MenuFrame, MenuButton, ScreenViewerWrapper, WindowsSessionSelect, RecordSessionButton, DownloadRecordingButton, VideoScreenViewer, StreamVideoButton, FileTransferBar, FileUploadButtton, FileDownloadButton, UpdateStreamingToggled, ViewOnlyButton, FullScreenButton } from "./UI.js";
 import { Sound } from "./Sound.js";
 import { ViewerApp } from "./App.js";
 import { UploadFiles } from "./FileTransferService.js";
@@ -57,7 +57,12 @@ export function ApplyInputHandlers() {
         ViewerApp.ViewOnlyMode = ViewOnlyButton.classList.contains("toggled");
     });
     TypeClipboardButton.addEventListener("click", (ev) => {
-        if (!navigator.clipboard.readText) {
+        var _a;
+        if (!location.protocol.includes("https") &&
+            !location.origin.includes("localhost")) {
+            alert("Clipboard API only works on HTTPS or localhost.");
+        }
+        if (!((_a = navigator.clipboard) === null || _a === void 0 ? void 0 : _a.readText)) {
             alert("Clipboard access isn't supported on this browser.");
             return;
         }
@@ -163,8 +168,13 @@ export function ApplyInputHandlers() {
     });
     KeyboardButton.addEventListener("click", (ev) => {
         closeAllHorizontalBars(null);
-        TouchKeyboardTextArea.focus();
-        TouchKeyboardTextArea.setSelectionRange(TouchKeyboardTextArea.value.length, TouchKeyboardTextArea.value.length);
+        KeyboardButton.classList.toggle("toggled");
+        if (KeyboardButton.classList.contains("toggled")) {
+            TouchKeyboardInput.focus();
+        }
+        else {
+            TouchKeyboardInput.blur();
+        }
         MenuFrame.classList.remove("open");
         MenuButton.classList.remove("open");
     });
@@ -455,36 +465,38 @@ export function ApplyInputHandlers() {
             ViewerApp.MessageSender.SendMouseWheel(e.deltaX, e.deltaY);
         });
     });
-    TouchKeyboardTextArea.addEventListener("input", (ev) => {
-        if (ViewerApp.ViewOnlyMode) {
+    TouchKeyboardInput.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === "Backspace") {
+            // These keys don't produce text in the input, so send them as key presses.
+            ev.preventDefault();
+            if (ViewerApp.ViewOnlyMode) {
+                return;
+            }
+            ViewerApp.MessageSender.SendKeyPress(ev.key);
+        }
+    });
+    TouchKeyboardInput.addEventListener("input", (ev) => {
+        const text = TouchKeyboardInput.value;
+        TouchKeyboardInput.value = "";
+        if (ViewerApp.ViewOnlyMode || !text) {
             return;
         }
-        if (TouchKeyboardTextArea.value.length == 1) {
-            ViewerApp.MessageSender.SendKeyPress("Backspace");
+        ViewerApp.MessageSender.SendClipboardTransfer(text, true);
+    });
+    TouchKeyboardInput.addEventListener("blur", (ev) => {
+        // The keyboard stays open until the toggle button is pressed again.
+        // Don't steal focus from other form controls the user has moved to.
+        if (!KeyboardButton.classList.contains("toggled")) {
+            return;
         }
-        else if (TouchKeyboardTextArea.value.endsWith("\n")) {
-            ViewerApp.MessageSender.SendKeyPress("Enter");
-        }
-        else if (TouchKeyboardTextArea.value.endsWith(" ")) {
-            ViewerApp.MessageSender.SendKeyPress(" ");
-        }
-        else {
-            var input = TouchKeyboardTextArea.value.trim().substr(1);
-            for (var i = 0; i < input.length; i++) {
-                var character = input.charAt(i);
-                var sendShift = character.match(/[A-Z~!@#$%^&*()_+{}|<>?]/);
-                if (sendShift) {
-                    ViewerApp.MessageSender.SendKeyDown("Shift");
-                }
-                ViewerApp.MessageSender.SendKeyPress(character);
-                if (sendShift) {
-                    ViewerApp.MessageSender.SendKeyUp("Shift");
-                }
-            }
+        const next = ev.relatedTarget;
+        if (next && next !== KeyboardButton && /^(INPUT|SELECT|TEXTAREA)$/.test(next.tagName)) {
+            return;
         }
         window.setTimeout(() => {
-            TouchKeyboardTextArea.value = " #";
-            TouchKeyboardTextArea.setSelectionRange(TouchKeyboardTextArea.value.length, TouchKeyboardTextArea.value.length);
+            if (KeyboardButton.classList.contains("toggled")) {
+                TouchKeyboardInput.focus();
+            }
         });
     });
     WindowsSessionSelect.addEventListener("focus", () => {
