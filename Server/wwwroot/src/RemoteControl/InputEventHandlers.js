@@ -465,32 +465,62 @@ export function ApplyInputHandlers() {
             ViewerApp.MessageSender.SendMouseWheel(e.deltaX, e.deltaY);
         });
     });
-    // Backspace/Enter on the hidden input.  Desktop and iOS keyboards report them
-    // in keydown (key or keyCode 8/13).  Android IMEs (Gboard) often report
-    // keydown as key "Unidentified"/keyCode 229 and only expose the action in
-    // beforeinput (deleteContentBackward / insertLineBreak).  To get exactly one
-    // key press per physical key: keydown sends and preventDefault()s when it can
-    // identify the key and sets keyHandledByKeydown, so the beforeinput that may
-    // still follow is swallowed; beforeinput sends only when keydown did not.
-    // The flag is cleared on keyup (and by a timer in case keyup is lost).
-    let keyHandledByKeydown = false;
+    // Hidden touch-keyboard input.
+    //
+    // The field always holds one invisible placeholder (zero-width space) with the
+    // caret after it.  Browsers fire no beforeinput/input when Backspace is pressed
+    // in an empty field, so deleting the placeholder is itself the signal for
+    // "Backspace on the remote computer"; the placeholder is then restored.
+    // Real text is the field value minus the placeholder; the placeholder is never sent.
+    //
+    // One Backspace/Enter per physical key.  Up to three events can describe the
+    // same key press: keydown (key or keyCode 8/13), beforeinput
+    // (deleteContentBackward / insertLineBreak) and, for Backspace, the input event
+    // that reports the placeholder missing.  Whichever comes first sends through
+    // sendTouchKey(); keydown records it in keydownSent so the later events for
+    // that same press are swallowed (consumed once).  keyup or a 500 ms timer
+    // (cancelled whenever a new key press arrives) clears the record.
+    const Sentinel = "\u200b";
+    let keydownSent = null;
+    let keydownTimer = 0;
     let isTouchComposing = false;
+    const resetTouchField = () => {
+        TouchKeyboardInput.value = Sentinel;
+        TouchKeyboardInput.setSelectionRange(Sentinel.length, Sentinel.length);
+    };
+    const stripSentinel = (value) => (value || "").split(Sentinel).join("");
+    const fieldText = () => stripSentinel(TouchKeyboardInput.value);
     const sendTouchKey = (key) => {
         if (ViewerApp.ViewOnlyMode) {
             return;
         }
         ViewerApp.MessageSender.SendKeyPress(key);
     };
-    // While text is being composed (or is still in the field), Backspace edits
-    // the local text instead of the remote computer.
-    const fieldHasText = () => isTouchComposing || TouchKeyboardInput.value.length > 0;
+    // Returns true (and clears the record) if keydown already sent this key.
+    const consumeKeydownSent = (key) => {
+        if (keydownSent !== key) {
+            return false;
+        }
+        keydownSent = null;
+        window.clearTimeout(keydownTimer);
+        return true;
+    };
     const flushTouchText = (text) => {
-        TouchKeyboardInput.value = "";
+        resetTouchField();
         if (ViewerApp.ViewOnlyMode || !text) {
             return;
         }
         ViewerApp.MessageSender.SendClipboardTransfer(text, true);
     };
+    resetTouchField();
+    TouchKeyboardInput.addEventListener("focus", () => {
+        if (!TouchKeyboardInput.value.includes(Sentinel)) {
+            resetTouchField();
+        }
+        else {
+            TouchKeyboardInput.setSelectionRange(TouchKeyboardInput.value.length, TouchKeyboardInput.value.length);
+        }
+    });
     TouchKeyboardInput.addEventListener("keydown", (ev) => {
         const unidentified = ev.key === "Unidentified" || ev.keyCode === 229;
         let key = null;
@@ -500,54 +530,90 @@ export function ApplyInputHandlers() {
         else if (ev.key === "Enter" || (unidentified && ev.keyCode === 13)) {
             key = "Enter";
         }
-        if (!key || ev.isComposing) {
+        if (!key || ev.isComposing || isTouchComposing) {
             return;
         }
-        if (key === "Backspace" && fieldHasText()) {
+        if (key === "Backspace" && fieldText().length > 0) {
             return;
         }
         ev.preventDefault();
-        keyHandledByKeydown = true;
-        window.setTimeout(() => keyHandledByKeydown = false, 500);
+        keydownSent = key;
+        window.clearTimeout(keydownTimer);
+        keydownTimer = window.setTimeout(() => keydownSent = null, 500);
         sendTouchKey(key);
     });
     TouchKeyboardInput.addEventListener("keyup", () => {
-        keyHandledByKeydown = false;
+        keydownSent = null;
+        window.clearTimeout(keydownTimer);
     });
     TouchKeyboardInput.addEventListener("beforeinput", (ev) => {
-        let key = null;
+        const composing = ev.isComposing || isTouchComposing;
         if (ev.inputType === "deleteContentBackward") {
-            key = "Backspace";
-        }
-        else if (ev.inputType === "insertLineBreak" || ev.inputType === "insertParagraph") {
-            key = "Enter";
-        }
-        if (!key) {
+            // Backspace while composing, or with text in the field, edits the
+            // local text.  Only a Backspace that would delete the placeholder
+            // goes to the remote computer.
+            if (composing || fieldText().length > 0) {
+                return;
+            }
+            ev.preventDefault();
+            if (consumeKeydownSent("Backspace")) {
+                return;
+            }
+            sendTouchKey("Backspace");
             return;
         }
-        if (key === "Backspace" && (ev.isComposing || fieldHasText())) {
-            return;
+        if (ev.inputType === "insertLineBreak" || ev.inputType === "insertParagraph") {
+            ev.preventDefault();
+            if (composing) {
+                // Text committed together with a line break: send the composed
+                // text first, then Enter.  With nothing composed, ignore it.
+                const text = fieldText();
+                isTouchComposing = false;
+                if (!text) {
+                    return;
+                }
+                flushTouchText(text);
+                sendTouchKey("Enter");
+                return;
+            }
+            if (consumeKeydownSent("Enter")) {
+                return;
+            }
+            sendTouchKey("Enter");
         }
-        ev.preventDefault();
-        if (keyHandledByKeydown) {
-            return;
-        }
-        sendTouchKey(key);
     });
     TouchKeyboardInput.addEventListener("compositionstart", () => {
         isTouchComposing = true;
     });
     TouchKeyboardInput.addEventListener("compositionend", (ev) => {
         isTouchComposing = false;
-        // Read and clear the field here; a following non-composing input event
-        // then sees an empty field, so nothing is sent twice or lost.
-        flushTouchText(TouchKeyboardInput.value || ev.data);
+        // Exactly one source for the text: the field value if it has any, else
+        // ev.data.  Flushing resets the field, so a later non-composing input
+        // event sees only the placeholder and sends nothing.
+        const fromField = fieldText();
+        const text = fromField !== "" ? fromField : stripSentinel(ev.data);
+        flushTouchText(text);
     });
     TouchKeyboardInput.addEventListener("input", (ev) => {
         if (ev.isComposing || isTouchComposing) {
             return;
         }
-        flushTouchText(TouchKeyboardInput.value);
+        const value = TouchKeyboardInput.value;
+        const text = stripSentinel(value);
+        if (text === "" && value.includes(Sentinel)) {
+            // Only the placeholder: nothing to send.
+            TouchKeyboardInput.setSelectionRange(value.length, value.length);
+            return;
+        }
+        if (text === "") {
+            // The placeholder was deleted: Backspace, unless keydown/beforeinput sent it.
+            if (!consumeKeydownSent("Backspace")) {
+                sendTouchKey("Backspace");
+            }
+            resetTouchField();
+            return;
+        }
+        flushTouchText(text);
     });
     TouchKeyboardInput.addEventListener("blur", (ev) => {
         // The keyboard stays open until the toggle button is pressed again.
