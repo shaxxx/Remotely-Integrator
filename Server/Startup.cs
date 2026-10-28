@@ -244,7 +244,7 @@ namespace Remotely.Server
         }
 
 
-        private static void ConfigureStaticFiles(IApplicationBuilder app, IWebHostEnvironment env)
+        internal static void ConfigureStaticFiles(IApplicationBuilder app, IWebHostEnvironment env)
         {
             var provider = new FileExtensionContentTypeProvider();
             // Add new mappings
