@@ -51,7 +51,14 @@ var startPinchPoint2: Point;
 var lastPinchDistance: number;
 var isMenuButtonDragging: boolean;
 var startMenuDraggingY: number;
-var startLongPressTimeout: number;
+// Long-press na dodir (iz immense/RemoteControl): preglednik sam okida "contextmenu" nakon
+// dugog dodira; pomak veći od LongPressMoveTolerance piksela pretvara ga u povlačenje.
+const LongPressMoveTolerance = 5;
+var longPressStarted: boolean;
+var longPressStartX: number;
+var longPressStartY: number;
+var lastDragPercentX: number;
+var lastDragPercentY: number;
 var lastPinchCenterX: number;
 var lastPinchCenterY: number;
 var isScrolling: boolean;
@@ -311,21 +318,15 @@ export function ApplyInputHandlers() {
         viewer.addEventListener("touchstart", function (e: TouchEvent) {
             currentTouchCount = e.touches.length;
 
-            if (currentTouchCount == 1) {
-                startLongPressTimeout = window.setTimeout(() => {
-                    if (ViewerApp.ViewOnlyMode) {
-                        return;
-                    }
-
-                    var percentX = e.touches[0].pageX / viewer.clientWidth;
-                    var percentY = e.touches[0].pageY / viewer.clientHeight;
-                    ViewerApp.MessageSender.SendMouseDown(2, percentX, percentY);
-                    ViewerApp.MessageSender.SendMouseUp(2, percentX, percentY);
-                }, 1000);
-            }
-
             if (currentTouchCount > 1) {
                 cancelNextViewerClick = true;
+
+                // Drugi prst prekida long-press / povlačenje; ako je tipka pritisnuta, pusti je.
+                if (isDragging && !ViewerApp.ViewOnlyMode) {
+                    ViewerApp.MessageSender.SendMouseUp(0, lastDragPercentX, lastDragPercentY);
+                }
+                longPressStarted = false;
+                isDragging = false;
             }
             if (currentTouchCount == 2) {
                 lastScrollTouchY1 = e.touches[0].pageY;
@@ -351,7 +352,34 @@ export function ApplyInputHandlers() {
         viewer.addEventListener("touchmove", function (e: TouchEvent) {
             currentTouchCount = e.touches.length;
 
-            clearTimeout(startLongPressTimeout);
+            if (longPressStarted || isDragging) {
+                e.preventDefault();
+            }
+
+            if (e.touches.length == 1 && longPressStarted && !isDragging) {
+                e.stopPropagation();
+
+                if (ViewerApp.ViewOnlyMode) {
+                    return;
+                }
+
+                const rect = viewer.getBoundingClientRect();
+                const moveDistance = GetDistanceBetween(
+                    longPressStartX,
+                    longPressStartY,
+                    e.touches[0].clientX - rect.left,
+                    e.touches[0].clientY - rect.top);
+
+                if (moveDistance > LongPressMoveTolerance) {
+                    // Klik-i-povuci: počni od točke početnog dodira.
+                    isDragging = true;
+                    lastDragPercentX = longPressStartX / viewer.clientWidth;
+                    lastDragPercentY = longPressStartY / viewer.clientHeight;
+                    ViewerApp.MessageSender.SendMouseMove(lastDragPercentX, lastDragPercentY);
+                    ViewerApp.MessageSender.SendMouseDown(0, lastDragPercentX, lastDragPercentY);
+                }
+                return;
+            }
 
             if (e.touches.length == 2) {
                 let touchMove1 = lastScrollTouchY1 - e.touches[0].pageY;
@@ -451,27 +479,14 @@ export function ApplyInputHandlers() {
                 var screenViewerTop = viewer.getBoundingClientRect().top;
                 var pagePercentX = (e.touches[0].pageX - screenViewerLeft) / viewer.clientWidth;
                 var pagePercentY = (e.touches[0].pageY - screenViewerTop) / viewer.clientHeight;
+                lastDragPercentX = pagePercentX;
+                lastDragPercentY = pagePercentY;
                 ViewerApp.MessageSender.SendMouseMove(pagePercentX, pagePercentY);
             }
         });
 
         viewer.addEventListener("touchend", function (e: TouchEvent) {
             currentTouchCount = e.touches.length;
-
-            clearTimeout(startLongPressTimeout);
-
-            if (e.touches.length == 1 && !isPinchZooming && !isScrolling) {
-                if (ViewerApp.ViewOnlyMode) {
-                    return;
-                }
-
-                isDragging = true;
-                var percentX = (e.touches[0].pageX - viewer.getBoundingClientRect().left) / viewer.clientWidth;
-                var percentY = (e.touches[0].pageY - viewer.getBoundingClientRect().top) / viewer.clientHeight;
-                ViewerApp.MessageSender.SendMouseMove(percentX, percentY);
-                ViewerApp.MessageSender.SendMouseDown(0, percentX, percentY);
-                return;
-            }
 
             if (currentTouchCount == 0) {
                 cancelNextViewerClick = false;
@@ -483,22 +498,40 @@ export function ApplyInputHandlers() {
                 startPinchPoint2 = null;
             }
 
-            if (isDragging) {
-                if (ViewerApp.ViewOnlyMode) {
-                    return;
-                }
+            var rect = viewer.getBoundingClientRect();
+            var percentX = (e.changedTouches[0].clientX - rect.left) / viewer.clientWidth;
+            var percentY = (e.changedTouches[0].clientY - rect.top) / viewer.clientHeight;
 
-                var percentX = (e.changedTouches[0].pageX - viewer.getBoundingClientRect().left) / viewer.clientWidth;
-                var percentY = (e.changedTouches[0].pageY - viewer.getBoundingClientRect().top) / viewer.clientHeight;
+            if (longPressStarted && !isDragging && !ViewerApp.ViewOnlyMode) {
+                // Long-press na mjestu: desni klik (miš je već pomaknut u contextmenu).
+                ViewerApp.MessageSender.SendMouseDown(2, percentX, percentY);
+                ViewerApp.MessageSender.SendMouseUp(2, percentX, percentY);
+            }
+
+            if (isDragging && !ViewerApp.ViewOnlyMode) {
                 ViewerApp.MessageSender.SendMouseUp(0, percentX, percentY);
             }
 
+            longPressStarted = false;
             isDragging = false;
         });
 
 
-        viewer.addEventListener("contextmenu", (ev) => {
+        viewer.addEventListener("contextmenu", (ev: MouseEvent) => {
             ev.preventDefault();
+
+            if (ViewerApp.ViewOnlyMode) {
+                return;
+            }
+
+            if (currentPointerDevice == "touch") {
+                // Početak desnog klika ili povlačenja: prvo pomakni miš na točku dodira.
+                var rect = viewer.getBoundingClientRect();
+                longPressStartX = ev.clientX - rect.left;
+                longPressStartY = ev.clientY - rect.top;
+                ViewerApp.MessageSender.SendMouseMove(longPressStartX / viewer.clientWidth, longPressStartY / viewer.clientHeight);
+                longPressStarted = true;
+            }
         });
 
         viewer.addEventListener("wheel", function (e: WheelEvent) {
