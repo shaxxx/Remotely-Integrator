@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Extensions.Logging;
 using Remotely.Shared.Models;
@@ -44,10 +45,33 @@ namespace Remotely.Server.Data
             options.LogTo((message) => System.Diagnostics.Debug.Write(message));
         }
 
+        protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+        {
+            base.ConfigureConventions(configurationBuilder);
+
+            // No new migrations (P2): EF Core 8+ gives the TPH discriminator column a max length
+            // (nvarchar(13) for RemotelyUsers.Discriminator); the migrations created it without one.
+            configurationBuilder.Conventions.Remove(typeof(DiscriminatorLengthConvention));
+        }
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
 
             base.OnModelCreating(builder);
+
+            // No new migrations (P2): the migrations created these key columns with max length 128
+            // (Startup sets Stores.MaxLengthForKeys = 128). Configured here as well so the model does not
+            // depend on IdentityOptions from DI, e.g. for a context created without it (SchemaTests).
+            builder.Entity<IdentityUserLogin<string>>(b =>
+            {
+                b.Property(x => x.LoginProvider).HasMaxLength(128);
+                b.Property(x => x.ProviderKey).HasMaxLength(128);
+            });
+            builder.Entity<IdentityUserToken<string>>(b =>
+            {
+                b.Property(x => x.LoginProvider).HasMaxLength(128);
+                b.Property(x => x.Name).HasMaxLength(128);
+            });
 
             builder.Entity<IdentityUser>().ToTable("RemotelyUsers");
 
@@ -180,7 +204,10 @@ namespace Remotely.Server.Data
                 // This only supports millisecond precision, but should be sufficient for most use cases.
                 foreach (var entityType in builder.Model.GetEntityTypes())
                 {
-                    if (entityType.IsKeyless)
+                    // Without a primary key: e.g. IdentityPasskeyData (ASP.NET Core Identity 10), left over from the
+                    // ignored passkey entity and removed when the model is finalized. Configuring it here would
+                    // keep it in the model without a key and model validation would fail.
+                    if (entityType.IsKeyless || entityType.FindPrimaryKey() is null)
                     {
                         continue;
                     }

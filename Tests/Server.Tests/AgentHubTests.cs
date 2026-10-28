@@ -42,7 +42,7 @@ namespace Remotely.Tests
             var hub = new AgentHub(DataService, appConfig.Object, viewerHub.Object, circuitManager.Object, expiringTokenService.Object);
 
             var hubClients = new Mock<IHubCallerClients>();
-            var caller = new Mock<IClientProxy>();
+            var caller = new Mock<ISingleClientProxy>();
             hubClients.Setup(x => x.Caller).Returns(caller.Object);
             hub.Clients = hubClients.Object;
 
@@ -68,7 +68,7 @@ namespace Remotely.Tests
             var hub = new AgentHub(DataService, appConfig.Object, viewerHub.Object, circuitManager.Object, expiringTokenService.Object);
 
             var hubClients = new Mock<IHubCallerClients>();
-            var caller = new Mock<IClientProxy>();
+            var caller = new Mock<ISingleClientProxy>();
             hubClients.Setup(x => x.Caller).Returns(caller.Object);
             hub.Clients = hubClients.Object;
 
@@ -102,7 +102,7 @@ namespace Remotely.Tests
             
 
             var agentHubClients = new Mock<IHubCallerClients>();
-            var agentHubCaller = new Mock<IClientProxy>();
+            var agentHubCaller = new Mock<ISingleClientProxy>();
             var agentClientsProxy = new Mock<IClientProxy>();
             agentHubClients.Setup(x => x.Caller).Returns(agentHubCaller.Object);
             agentHubClients.Setup(x => x.Clients(It.IsAny<IReadOnlyList<string>>())).Returns(agentClientsProxy.Object);
