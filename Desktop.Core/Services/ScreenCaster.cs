@@ -110,12 +110,6 @@ namespace Remotely.Desktop.Core.Services
                     });
                 }
 
-
-                if (EnvironmentHelper.IsWindows && screenCastRequest.UseWebRtc)
-                {
-                    await viewer.InitializeWebRtc();
-                }
-
                 // Wait until the first image is received.
                 if (!TaskHelper.DelayUntil(() => !viewer.PendingSentFrames.Any(), TimeSpan.FromSeconds(30)))
                 {
@@ -142,12 +136,6 @@ namespace Remotely.Desktop.Core.Services
                 {
                     try
                     {
-                        if (viewer.IsUsingWebRtcVideo)
-                        {
-                            Thread.Sleep(100);
-                            continue;
-                        }
-
                         if (viewer.IsStalled)
                         {
                             // Viewer isn't responding.  Abort sending.

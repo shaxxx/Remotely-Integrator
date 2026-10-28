@@ -98,7 +98,8 @@ namespace Remotely.Desktop.Core.Services
                         ToggleBlockInput(message);
                         break;
                     case BaseDtoType.ToggleWebRtcVideo:
-                        ToggleWebRtcVideo(message, viewer);
+                        // WebRTC was removed from the desktop client (.NET 10 port). The message type
+                        // stays in the protocol and is ignored here.
                         break;
                     case BaseDtoType.ClipboardTransfer:
                         await ClipboardTransfer(message);
@@ -258,12 +259,6 @@ namespace Remotely.Desktop.Core.Services
         {
             var dto = MessagePackSerializer.Deserialize<ToggleBlockInputDto>(message);
             KeyboardMouseInput.ToggleBlockInput(dto.ToggleOn);
-        }
-
-        private void ToggleWebRtcVideo(byte[] message, Viewer viewer)
-        {
-            var dto = MessagePackSerializer.Deserialize<ToggleWebRtcVideoDto>(message);
-            viewer.ToggleWebRtcVideo(dto.ToggleOn);
         }
     }
 }

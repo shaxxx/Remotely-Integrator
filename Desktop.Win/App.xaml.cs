@@ -91,7 +91,6 @@ namespace Remotely.Desktop.Win
             serviceCollection.AddSingleton<IChatUiService, ChatUiServiceWin>();
             serviceCollection.AddTransient<IScreenCapturer, ScreenCapturerWin>();
             serviceCollection.AddTransient<Viewer>();
-            serviceCollection.AddScoped<IWebRtcSessionFactory, WebRtcSessionFactory>();
             serviceCollection.AddScoped<IFileTransferService, FileTransferServiceWin>();
             serviceCollection.AddSingleton<ISessionIndicator, SessionIndicatorWin>();
             serviceCollection.AddSingleton<IShutdownService, ShutdownServiceWin>();

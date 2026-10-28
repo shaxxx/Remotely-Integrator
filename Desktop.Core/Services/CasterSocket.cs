@@ -235,35 +235,15 @@ namespace Remotely.Desktop.Core.Services
             });
 
 
+            // WebRTC was removed from the desktop client (.NET 10 port), so it never sends an RTC offer
+            // and the server has no reason to call these. The handlers stay registered and ignore
+            // the call, so the hub protocol is unchanged.
             Connection.On("ReceiveIceCandidate", (string candidate, int sdpMlineIndex, string sdpMid, string viewerID) =>
             {
-                try
-                {
-                    if (conductor.Viewers.TryGetValue(viewerID, out var viewer))
-                    {
-                        viewer.RtcSession.AddIceCandidate(sdpMid, sdpMlineIndex, candidate);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Write(ex);
-                }
-
             });
 
-            Connection.On("ReceiveRtcAnswer", async (string sdp, string viewerID) =>
+            Connection.On("ReceiveRtcAnswer", (string sdp, string viewerID) =>
             {
-                try
-                {
-                    if (conductor.Viewers.TryGetValue(viewerID, out var viewer))
-                    {
-                        await viewer.RtcSession.SetRemoteDescription("answer", sdp);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Write(ex);
-                }
             });
 
             Connection.On("RequestScreenCast", (string viewerID, string requesterName, bool notifyUser, bool useWebRtc) =>
