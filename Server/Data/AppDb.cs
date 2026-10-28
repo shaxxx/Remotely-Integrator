@@ -59,9 +59,11 @@ namespace Remotely.Server.Data
 
             base.OnModelCreating(builder);
 
-            // No new migrations (P2): the migrations created these key columns with max length 128
-            // (Startup sets Stores.MaxLengthForKeys = 128). Configured here as well so the model does not
-            // depend on IdentityOptions from DI, e.g. for a context created without it (SchemaTests).
+            // No new migrations (P2): the migrations created these key columns with max length 128. REQUIRED, do not
+            // remove as redundant: Startup's Stores.MaxLengthForKeys = 128 never reaches this model, because the provider
+            // contexts (SqlServerDbContext etc.) are constructed with IConfiguration only and never receive the app's
+            // DbContextOptions/ApplicationServiceProvider, so Identity sees no IdentityOptions and defaults the keys to 450.
+            // Without this pin the model differs from the migrations and Database.Migrate() in Startup throws (EF Core 9+).
             builder.Entity<IdentityUserLogin<string>>(b =>
             {
                 b.Property(x => x.LoginProvider).HasMaxLength(128);
