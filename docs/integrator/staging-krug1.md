@@ -72,7 +72,8 @@ Ovo je glavni nalaz kruga 1. Povezivanje preko session ID-a ("Integrator podršk
 - Dakle problem postoji i na produkciji i nije posljedica seobe. Pojavljuje se kad je kartica viewera skrivena dulje vrijeme (npr. rad u Proxmox konzoli u drugoj kartici).
 - Ispravak K6 (commiti `df1f5ea7` i `6be9a5b8`): obrada slika bez tajmera, nastavak bez `setTimeout`.
 - Provjera na stagingu sa starim klijentom 2021, viewer build `df1f5ea7`: Chromeov intensive throttling uključio se u 08:29:17 UTC (razmak heartbeata 13 s, zatim oko 60 s) dok je kartica bila skrivena. Kroz cijelu sesiju 4007 slika i 4007 potvrda, najveće kašnjenje potvrde 10 ms; sesija živa kroz oko 13 minuta throttlinga, uključujući oko 4 minute gotovo statičnog ekrana (SignalR ostao Connected). Na produkciji sa starim viewerom isti uvjeti dali su kašnjenje potvrda 60 do 99 s i "Viewer stalled" unutar 15 s.
-- Završni commit `6be9a5b8` (potvrda zastarjele slike i odbacivanje, oslobađanje bitmapa): ponovna provjera završne verzije u tijeku.
+- Završni commit `6be9a5b8` (potvrda zastarjele slike i odbacivanje, oslobađanje bitmapa), ista provjera sa starim klijentom 2021: throttling se uključio u 08:49:17 UTC (razmak heartbeata 34 s, zatim 60 s); tijekom throttlinga 2678 slika, najveće kašnjenje potvrde 5 ms; ukupno 3162 slike i 3162 potvrde, bez grešaka u konzoli i bez promjene vidljivosti kartice. Desktop log: sesija 09:47:46–09:58:35, "Viewer Stalled: False" (završila odspajanjem).
+- Na stagingu su datoteke viewera (`CaptureProcessor.js` i `.js.map`) zamijenjene izravno, uz kopije `*.pre-k6`; ostatak staging builda je K1. Sljedeći puni build iz grane `integrator` sadrži K6.
 
 ### c) Opažanja koja nisu uzrok
 
@@ -96,6 +97,5 @@ Ovo je glavni nalaz kruga 1. Povezivanje preko session ID-a ("Integrator podršk
 ## 6. Otvoreno za krug 2
 
 - Stavka 2.8 s novim desktopom (R18 + K6): ponoviti povezivanje preko session ID-a, uključujući dulje sesije sa skrivenom karticom i statičan ekran.
-- Dovršiti ponovnu provjeru K6 `6be9a5b8` na stagingu (odjeljak 3b).
 - Stavka 1.5: ostale varijante zaglavlja uživo (ako se ne smatraju pokrivenima jediničnim testovima).
 - Ostale stavke iz `checklist-staging.md` (krug 2).
