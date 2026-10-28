@@ -13,9 +13,7 @@ export function HandleCaptureReceived(captureFrame) {
         var partials = ImagePartials[captureFrame.Sequence];
         let completedFrame = new Blob(partials);
         delete ImagePartials[captureFrame.Sequence];
-        createImageBitmap(completedFrame).then(bitmap => {
-            return bitmap;
-        }, ex => {
+        createImageBitmap(completedFrame).catch((ex) => {
             // Undecodable frame is still queued (not drawable), so it gets acked and the sequence advances.
             console.error(ex);
             return null;
@@ -56,7 +54,19 @@ function processQueue() {
         let data = completedFrame.FrameData;
         if (data.Sequence == 0) {
             NextSequence = 0;
-            BitmapQueue.splice(0);
+            BitmapQueue.splice(0).forEach(x => { var _a; return (_a = x.ImageContent) === null || _a === void 0 ? void 0 : _a.close(); });
+        }
+        if (data.Sequence < NextSequence) {
+            // Stale frame: ack it anyway (an extra ack is harmless, a missing one is fatal), do not draw.
+            content === null || content === void 0 ? void 0 : content.close();
+            try {
+                ViewerApp.MessageSender.SendFrameReceived();
+            }
+            catch (ex) {
+                console.error(ex);
+            }
+            Promise.resolve().then(() => processQueue());
+            return;
         }
         if (data.Sequence != NextSequence) {
             console.debug("Frame out of sequence.  Putting it back in queue.");
@@ -65,6 +75,7 @@ function processQueue() {
             isProcessing = false;
             return;
         }
+        NextSequence = data.Sequence + 1;
         let drawn = content ?
             createImageBitmap(content).then(bitmap => {
                 try {
@@ -72,18 +83,18 @@ function processQueue() {
                 }
                 finally {
                     bitmap.close();
+                    content.close();
                 }
             }) :
             Promise.resolve();
         drawn.catch(ex => {
+            content === null || content === void 0 ? void 0 : content.close();
             console.error(ex);
         }).then(() => {
             try {
                 ViewerApp.MessageSender.SendFrameReceived();
-                NextSequence = data.Sequence + 1;
             }
             catch (ex) {
-                NextSequence = data.Sequence + 1;
                 console.error(ex);
             }
             processQueue();
