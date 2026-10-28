@@ -55,18 +55,18 @@ Dvije su činjenice iz starog koda (nisu uvedene našim izmjenama). Prvo, stari 
 | 2.3 | `ExecuteCommand/WinPS` s `Write-Output 'čćžšđ ČĆŽŠĐ'` | `ExecuteCommand` kao na produkciji (sa starim agentom 404 nakon ~30 s), rezultat se nalazi u `GET api/ScriptResults`; `ScriptInput` točno jednak poslanom tekstu; `StandardOutput` zabilježen i jednak produkcijskom za isti stroj i naredbu (usporedba kad se IVICATEST vrati na produkciju); u oba formata zaglavlja | OK (= produkcija) | 404 nakon 30,1 s, rezultat u `ScriptResults`, izlazi jednaki krugu 1 (`staging-krug2.md`). |
 | 2.4 | `ExecuteCommand/CMD` s `echo čćžšđ` | `ExecuteCommand` kao na produkciji (sa starim agentom 404 nakon ~30 s), rezultat se nalazi u `GET api/ScriptResults`; `ScriptInput` točno jednak poslanom tekstu; `StandardOutput` zabilježen i jednak produkcijskom za isti stroj i naredbu (usporedba kad se IVICATEST vrati na produkciju); u oba formata zaglavlja | OK (= produkcija) | Isto kao 2.3. |
 | 2.5 | Varijante zaglavlja koje šalju stvarni klijenti: razmaci oko vrijednosti, `basic` malim slovima, tajna s `+`, `/`, `=`, tajna s dvotočkom | Sve se autorizira (200); neispravan base64, prazno zaglavlje i pogrešan ključ daju 401 | nije testirano | Uživo samo `raw` i `Basic`; ostalo pokrivaju jedinični testovi. |
-| 2.6 | Remote control iz weba | Sesija se otvara, slika i unos rade | OK | Web RC a do g OK. |
+| 2.6 | Remote control iz weba | Sesija se otvara, slika i unos rade | OK | Web RC a do g OK, stari agent unattended, net10b (potvrdio korisnik 2026-10-28). |
 | 2.7 | Remote control iz testne Operative (`config.ini` s `BaseUrl` na staging) | Sesija se otvara, slika i unos rade | OK | Operativa s `BaseUrl` na staging. |
-| 2.8 | "Integrator podrška" sa session ID-om preko `/RemoteControl` | Sesija se otvara na stagingu | nije testirano | Nema zapisa rezultata za krug 2; vidi N1 u `staging-krug2.md`. |
+| 2.8 | "Integrator podrška" sa session ID-om preko `/RemoteControl` | Sesija se otvara na stagingu | OK (uz N1) | Prvi pokušaj 12:46 pogodio N1; kasnije OK (instrumentirani pokus, attended pokusi kontrolera: 181+ slika sa skrivenom karticom, 735/735 u prvom planu). Provjera K6 skrivene kartice >6 min nije ponovljena u krugu 2 (rađena u krugu 1) (potvrdio korisnik 2026-10-28). |
 | 2.9 | Chat | Poruke teku u oba smjera | OK |  |
 | 2.10 | Prijenos datoteka u oba smjera | Datoteke stižu neoštećene (usporedba SHA-256) | OK | Datoteka 50 MB, SHA-256 identičan; ostali smjerovi nisu zasebno zabilježeni. |
 | 2.11 | Prijenos datoteke od 50 MB kroz remote control | Ponaša se kao na produkciji (uspjeh ili ista poruka o ograničenju) | OK | 50 MB, SHA-256 identičan. |
-| 2.12 | Međuspremnik u oba smjera | Tekst se prenosi, uključujući hrvatska slova | nije testirano | Nije zasebno zabilježeno. |
-| 2.13 | Ctrl+Alt+Del | Secure attention sequence radi | nije testirano | Nije zasebno zabilježeno. |
-| 2.14 | UAC prompt | Prompt je vidljiv i može se potvrditi u sesiji | nije testirano | Nije zasebno zabilježeno. |
-| 2.15 | Zaključani ekran | Sesija ostaje upotrebljiva, prijava iz sesije radi | nije testirano | Nije zasebno zabilježeno. |
+| 2.12 | Međuspremnik u oba smjera | Tekst se prenosi, uključujući hrvatska slova | OK | Međuspremnik u oba smjera (potvrdio korisnik 2026-10-28). |
+| 2.13 | Ctrl+Alt+Del | Secure attention sequence radi | OK | Gumb Ctrl+Alt+Del u vieweru otvara sigurni ekran (potvrdio korisnik 2026-10-28). |
+| 2.14 | UAC prompt | Prompt je vidljiv i može se potvrditi u sesiji | OK | UAC prompt (regedit) vidljiv i potvrđuje se (potvrdio korisnik 2026-10-28). |
+| 2.15 | Zaključani ekran | Sesija ostaje upotrebljiva, prijava iz sesije radi | OK | Lock radi, nakon prijave slika i upravljanje se nastavljaju (potvrdio korisnik 2026-10-28). |
 | 2.16 | Više monitora (ako stroj ima više monitora) | Prebacivanje monitora radi | N/A | IVICATEST ima jedan monitor (krug 1). |
-| 2.17 | Hrvatska slova u izlazu skripte kroz stari agent (`čćžšđ ČĆŽŠĐ`) i u tipkanju kroz remote control | Izlaz skripte: kao u 2.3/2.4 (usporedba s produkcijom; stari agent gubi `č`/`ć`/`đ`, vidi objašnjenje ispod Kruga 1); tipkanje i međuspremnik kroz remote control: znakovi stižu na ekran nepromijenjeni | OK (= produkcija) | Gubitak `č`/`ć` pri tipkanju kroz stari desktop isti kao na produkciji; izlaz skripte kao u 2.3/2.4. |
+| 2.17 | Hrvatska slova u izlazu skripte kroz stari agent (`čćžšđ ČĆŽŠĐ`) i u tipkanju kroz remote control | Izlaz skripte: kao u 2.3/2.4 (usporedba s produkcijom; stari agent gubi `č`/`ć`/`đ`, vidi objašnjenje ispod Kruga 1); tipkanje i međuspremnik kroz remote control: znakovi stižu na ekran nepromijenjeni | OK (= produkcija) | `č`/`ć`/`Č`/`Ć` se gube kao na produkciji, `ž š đ` prolaze; izlaz skripte kao u 2.3/2.4 (potvrdio korisnik 2026-10-28). |
 | 2.18 | Hrvatske putanje u prijenosu datoteka (naziv datoteke sa `čćžšđ`) | Datoteka se prenosi s ispravnim nazivom | nije testirano |  |
 
 ### K2. Novi agent, instaliran testnom verzijom Tokmaka s K5
@@ -105,10 +105,10 @@ Naredba: `Tokmak4 Remotely -i <GUID stroja iz CEZAR-a> -a "<parametri>"`, s `-se
 
 | # | stavka | očekivano | rezultat | napomena |
 |---|---|---|---|---|
-| 6.1 | Long-press za desni klik | Desni klik na ciljanoj točki | OK | Mobitel a do d, f OK (Android 16, Chromium). |
-| 6.2 | Long-press s povlačenjem | Klik-i-povuci radi | OK | Vidi 6.1. |
-| 6.3 | Scroll s dva prsta | Radi (već u početnoj točki) | OK | Vidi 6.1. |
-| 6.4 | Virtualna tipkovnica kao preklopni gumb; Enter, Backspace i lijepljenje teksta | Unos radi | OK | Prvo FAIL (svako drugo slovo, R33), nakon ispravka na net10c OK. |
+| 6.1 | Long-press za desni klik | Desni klik na ciljanoj točki | OK | Long-press desni klik OK (Android 16, Chromium) (potvrdio korisnik 2026-10-28). |
+| 6.2 | Long-press s povlačenjem | Klik-i-povuci radi | OK | Long-press povlačenje OK (potvrdio korisnik 2026-10-28). |
+| 6.3 | Scroll s dva prsta | Radi (već u početnoj točki) | OK | Scroll/pinch s dva prsta OK (potvrdio korisnik 2026-10-28). |
+| 6.4 | Virtualna tipkovnica kao preklopni gumb; Enter, Backspace i lijepljenje teksta | Unos radi | OK | Preklopni gumb OK, lijepljenje OK, hrvatska slova OK; tipkanje prvo FAIL (svako drugo slovo, R33), nakon ispravka na net10c OK (potvrdio korisnik 2026-10-28). |
 | 6.5 | Dozvola za čitanje međuspremnika u Firefoxu i Safariju | Obrađuje se bez greške | nije testirano | Nema Firefoxa na mobitelu. |
 | 6.6 | Viewer sa starim desktop klijentom (2021) | Radi; šalju se samo poruke koje stari klijent poznaje | nije testirano | Nije zasebno zabilježeno. |
 

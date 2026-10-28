@@ -45,15 +45,25 @@ Krug 2 testira server remote.integrator.hr (Remotely) izgrađen na .NET 10 (K1 d
 
 | stavka | rezultat | napomena |
 |---|---|---|
-| Web remote control (a do g) | OK | gubitak `č`/`ć` isti je kao na produkciji (krug 1, odjeljak 4) |
+| Web RC a: miš, Start izbornik | OK | stari agent 2021, unattended, net10b (potvrdio korisnik 2026-10-28) |
+| Web RC b: hrvatsko tipkanje | OK (= produkcija) | `č`/`ć`/`Č`/`Ć` se gube kao na produkciji (postojeće, krug 1 odjeljak 4), `ž š đ` prolaze (potvrdio korisnik 2026-10-28) |
+| Web RC c: međuspremnik u oba smjera | OK | potvrdio korisnik 2026-10-28 |
+| Web RC d: UAC prompt (regedit) | OK | vidljiv i može se potvrditi (potvrdio korisnik 2026-10-28) |
+| Web RC e: Task Manager, miš i tipkovnica | OK | potvrdio korisnik 2026-10-28 |
+| Web RC f: Ctrl+Alt+Del i Lock | OK | gumb u vieweru otvara sigurni ekran, Lock radi (potvrdio korisnik 2026-10-28) |
+| Web RC g: otključavanje nakon prijave | OK | slika i upravljanje se nastavljaju (potvrdio korisnik 2026-10-28) |
 | Prijenos datoteke 50 MB | OK | SHA-256 identičan, `C:\ProgramData\Remotely\Shared` |
 | Chat | OK | |
 | Operativa (`BaseUrl` na staging) | OK | |
-| Session ID ("Integrator podrška") | nije testirano | u dnevniku nema zapisa rezultata za krug 2; vidi N1 za prekid odmah nakon spajanja |
-| Ctrl+Alt+Del, UAC, zaključani ekran, međuspremnik, putanje s hrvatskim slovima | nije testirano | nema izričitog zapisa pojedinačno; stavke a do g su zabilježene skupno kao OK |
-| K3 mobitel (Android 16, Chromium 155 WebView) a, b, c, d, f | OK | |
-| K3 g, hrvatska slova | OK | |
-| K3 e, tipkovnica | FAIL, pa OK | svako drugo slovo se gubilo (R33); nakon ispravka na net10c OK: slova jednim pritiskom, Enter, Backspace (i u praznom polju), lijepljenje pa slovo, sva hrvatska slova |
+| Session ID ("Integrator podrška", attended, stari desktop 2021 "Remotely podrska 2021 STAGING") | OK, uz N1 | prvi pokušaj u 12:46 pogodio N1 (zastoj); kasniji pokušaji OK: korisnikov instrumentirani pokus "sve radi uredno", attended pokusi kontrolera (skrivena kartica 181+ slika; u prvom planu s pravim klikovima 735 slika / 735 potvrda). Provjera K6 sa skrivenom karticom dulje od 6 min NIJE ponovljena u krugu 2 (rađena u krugu 1 na K1+K6). Potvrdio korisnik 2026-10-28 |
+| Putanje s hrvatskim slovima u prijenosu datoteka | nije testirano | |
+| K3 a: long-press desni klik | OK | Android 16, Chromium 155 WebView (potvrdio korisnik 2026-10-28) |
+| K3 b: long-press povlačenje | OK | |
+| K3 c: scroll/pinch s dva prsta | OK | |
+| K3 d: tipkovnica kao preklopni gumb | OK | |
+| K3 f: lijepljenje | OK | |
+| K3 g: hrvatska slova | OK | |
+| K3 e, tipkovnica (tipkanje) | FAIL, pa OK | svako drugo slovo se gubilo (R33); nakon ispravka na net10c OK: slova jednim pritiskom, Enter, Backspace (i u praznom polju), lijepljenje pa slovo, sva hrvatska slova |
 | K3 h, upozorenje za međuspremnik u Firefoxu | nije testirano | nema Firefoxa na mobitelu |
 
 ### Novi agent preko testnog Tokmaka (koraci 5 do 8)
