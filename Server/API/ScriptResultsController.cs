@@ -1,7 +1,11 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Remotely.Server.Auth;
+using Remotely.Server.Hubs;
 using Remotely.Server.Services;
+using Remotely.Shared.Enums;
 using Remotely.Shared.Models;
+using System;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -52,6 +56,16 @@ namespace Remotely.Server.API
         public async Task<ScriptResult> Post([FromBody] ScriptResult result)
         {
             _dataService.AddOrUpdateScriptResult(result);
+
+            // Agents report an API command to AgentHub.ScriptResultViaApi with the request ID alone,
+            // which does not bind to that hub method, so ExecuteCommand never learned of the result and
+            // answered 404 after 30 s.  The result carries the request ID, so it is recorded here.
+            if (result.InputType == ScriptInputType.Api &&
+                !string.IsNullOrWhiteSpace(result.SenderConnectionID) &&
+                !string.IsNullOrWhiteSpace(result.ID))
+            {
+                AgentHub.ApiScriptResults.Set(result.SenderConnectionID, result.ID, DateTimeOffset.Now.AddHours(1));
+            }
 
             if (result.HadErrors && result.SavedScriptId.HasValue)
             {
