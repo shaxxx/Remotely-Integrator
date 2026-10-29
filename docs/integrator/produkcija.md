@@ -87,8 +87,8 @@ Nije mijenjano: odbijanje "already connected" (štiti od klonova s istim ID-om; 
 |---|---|
 | 09:00 | IVICATEST: stari agent i svi pokusni ostaci uklonjeni, novi agent 2026.10.29.0852 (isti ID) |
 | 09:26 | produkcijski viewer: `InputEventHandlers.js(.map)` zamijenjeni (`*.pre-k37` kopije) |
-| 09:32 | server 2026.10.29.0926 (`c5eb3927`) u `C:\sites\remotely-net10b`, prebacivanje ~40 s; povratak: `C:\sites\remotely-net10` |
-| 09:45 | IVICATEST ažuriran na 2026.10.29.0943 (`5760c7e3`) istim putem kao automatsko ažuriranje |
+| 09:32 | server 2026.10.29.0926 (`b129f994`) u `C:\sites\remotely-net10b`, prebacivanje ~40 s; povratak: `C:\sites\remotely-net10` |
+| 09:45 | IVICATEST ažuriran na 2026.10.29.0943 (`e6e9fc75`) istim putem kao automatsko ažuriranje |
 | 09:50 | `Content`: `Remotely-Win10-x64/x86.zip` = 0943; stari paketi u `C:\deploy\content-2021`; instaler nepromijenjen |
 
 Paketi 0943 (`C:\build\remotely-net10-prod4`):
