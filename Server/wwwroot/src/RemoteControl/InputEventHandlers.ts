@@ -819,9 +819,13 @@ export function ApplyInputHandlers() {
         if (e.key.length !== 1 || e.metaKey) {
             return false;
         }
+        // AltGr arrives as Ctrl+Alt (Chrome) or as the AltGraph modifier (Firefox);
+        // with a letter, digit or space it is a shortcut.
+        if (e.getModifierState("AltGraph") || (e.ctrlKey && e.altKey)) {
+            return !/[\sa-z0-9]/i.test(e.key);
+        }
         if (e.ctrlKey || e.altKey) {
-            // AltGr arrives as Ctrl+Alt; with a letter, digit or space it is a shortcut.
-            return e.ctrlKey && e.altKey && !/[\sa-z0-9]/i.test(e.key);
+            return false;
         }
         return e.key.charCodeAt(0) > 0x7f;
     };
@@ -851,7 +855,9 @@ export function ApplyInputHandlers() {
             return;
         }
         if (isTypedAsText(e)) {
-            keysTypedAsText.add(e.code);
+            if (e.code) {
+                keysTypedAsText.add(e.code);
+            }
             sendTypedText(caseForCapsLock(e), e.shiftKey);
             return;
         }
