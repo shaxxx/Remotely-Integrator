@@ -72,6 +72,14 @@ namespace Remotely.Tests
         }
 
         [TestMethod]
+        public void GetDeviceGroups_UnknownUser_ReturnsEmpty()
+        {
+            // DeviceCard renders before its user is loaded and iterates the result.
+            Assert.AreEqual(0, _dataService.GetDeviceGroups(null).Length);
+            Assert.AreEqual(0, _dataService.GetDeviceGroups("nobody@example.test").Length);
+        }
+
+        [TestMethod]
         public void DeviceGroupPermissions()
         {
             Assert.IsTrue(_dataService.GetDevicesForUser(_testData.Admin1.UserName).Count() == 2);

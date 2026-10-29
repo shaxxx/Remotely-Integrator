@@ -1244,9 +1244,10 @@ namespace Remotely.Server.Services
 
             var user = dbContext.Users.FirstOrDefault(x => x.UserName == username);
 
+            // Empty, not null: callers iterate the result (DeviceCard renders before its user is loaded).
             if (user is null)
             {
-                return null;
+                return Array.Empty<DeviceGroup>();
             }
             var userId = user.Id;
 
