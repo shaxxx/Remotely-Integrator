@@ -126,3 +126,59 @@ Usklađivanje (10:27): `POST /api/devices` (ID = GUID, alias = GUID, grupa Opera
 token prazan, restart servisa (SYSTEM zadatak s odgodom 5 s). NAPOLEON online pod `DC5395D1-…` za 4 s; stari zapis `4B9ECE6E-…`
 offline (briše ga korisnik u web sučelju). GUID se na stroju čita kao u Tokmaku: named pipe `integrator`, pozdrav
 `Integrator Support`, upit `machineguidid` (2 bajta duljine, UTF-16LE).
+
+### Zaostali stari agenti (stanje 11:30-12:00)
+
+Nakon ~515 ažuriranja zastoj: ~145 starih agenata online, a red na serveru prazan. Zaključeno iz koda i logova (klijentski stroj,
+IVICA):
+- U 10:10 agent pošalje zahtjev za paket, a server ga drži u redu bez ijednog bajta odgovora. Petlja čekanja nema ograničenje
+  i ne prati prekid veze.
+- NAT ili vatrozid prekine vezu koja predugo miruje. `RemotelyUpdate.zip` ostaje na 0 B.
+- Stari agent na odgovor čeka do 6 h (`WebClient` timeout = interval provjere). Zatim ga greška stavlja na 24 h čekanja.
+- Server za mrtvu vezu ipak zapiše "Download started" i drži mjesto 3 min. Zato je 696 preuzimanja dalo ~515 ažuriranja.
+
+Oporavak:
+- Ponovni start računala ili servisa odmah pokušava ponovo, a red je prazan.
+- Kod restarta stari proces visi još ~30 s i drži zip. Prebrz restart zato pada na "file in use", nakon čega slijedi 24 h
+  čekanja (IVICA u 10:27).
+- Ispravan redoslijed je zaustaviti servis, pričekati ili ugasiti proces, obrisati 0-bajtni zip i pokrenuti servis.
+  Tako je IVICA ažurirana u 12:13.
+
+Novi agent (0943) i server imaju isti obrazac (`UpdateDownloader` timeout 6 h). Za sljedeće izdanje agenta server bi trebao
+ograničiti čekanje i pratiti prekid zahtjeva.
+
+## 9. Tokmak usklađuje Remotely ID (2026-10-29)
+
+Spec `docs/superpowers/specs/2026-10-29-tokmak-remotely-reid-design.md`, plan
+`docs/superpowers/plans/2026-10-29-tokmak-remotely-reid.md`.
+
+Tokmak (Halo, interaktivni, `Remotely -i`) sada uspoređuje `DeviceID` iz `ConnectionInfo.json` s MachineGuidId-om. Ako se
+razlikuju, ponovno pokreće instaler s `-deviceuuid`/`-devicealias`/`-devicegroup`, kao kod nove instalacije. Server, agent,
+instaler i Operativa nisu mijenjani. Za svježu instalaciju Tokmak ne treba nikakvu izmjenu: instaler bez `-path` preuzima
+agenta s `/Content`, a tamo je od 09:50 inačica 0943.
+
+Scenariji na TOKMAKTEST-u (Windows ime `DESKTOP-AD5QSGI`, Proxmox):
+
+| Scenarij | Rezultat |
+|---|---|
+| 1. Svježi stroj, Halo | `60BC4539-BFF3-4769-B428-B993C2D20735` = MachineGuidId, grupa Operativa, alias = ID, 0943, Operativa API 200 |
+| 2. Krivi ID `6A0B1413-…`, testni Halo | "ne odgovara … ponovno instaliram", "usklađen", 54 s; uređaj pod `60BC4539-…`, postojeći zapis i grupa zadržani |
+| 3. Ponovni testni Halo | Bez instalacije, 13 s, isti proces agenta |
+| 4. Krivi ID `4FB89E36-…`, `Tokmak4.exe Remotely -i … -s false` (SYSTEM) | "ne odgovara … ponovno instaliram", "usklađen"; uređaj pod `60BC4539-…`. Exit 1 zbog tokena (ispod) |
+
+Exit 1 u scenariju 4 postoji i od prije, nije posljedica ove izmjene. `RemotelyCommand` odmah nakon instalacije zove
+`UpdateServerToken`, a instaler je token obrisao, pa ide `/token/token/{id}/null`. TokenExtractor za `null` vraća 500 (za
+token u obliku GUID-a 200; provjereno s nepostojećim ID-om). `dbo.TokenUpdate` ionako upisuje samo kad je token u bazi
+prazan, a server token postavlja pri spajanju agenta. Vjerojatno je isto objašnjenje i za exit 1 u koraku 5 staginga
+(`staging-krug2.md`).
+
+Zaostali offline zapisi (testni, briše ih korisnik u web sučelju): `6A0B1413-E82D-4CF2-9E8A-9E3F7E200EA8`,
+`4FB89E36-9E1E-4222-AF49-47CE186C9A63`.
+
+Check-in i objavu Tokmaka radi korisnik. Izmijenjene datoteke:
+- `Integrator.MachineSetup\RemotelyOptions.cs`;
+- `Integrator.MachineSetup\Remotely.cs`;
+- `Tokmak\Program.cs`;
+- `Tokmak\Commands\RemotelyCommand.cs`.
+
+Povratak je prethodna inačica Tokmaka.
