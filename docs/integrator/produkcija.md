@@ -163,7 +163,12 @@ sljedeći put: restart servera tek kad nema zaglavljenih starih agenata.
 - Prebacivanje `Switch-RemotelySite.ps1` trajalo je 8 s:
   - ETag x64 `"1dd678249020fb0"` i x86 `"1dd67826113854a"` su nepromijenjeni;
   - `/`, `/RemoteControl` i `/token` vraćaju 200.
-- Povratak je `C:\sites\remotely-net10b`, a prije njega `C:\sites\remotely-net10`.
+- Mape `C:\sites\remotely-net10b` i `C:\sites\remotely-net10` te baza `Remotely_Test` obrisane su isti dan (korisnik).
+  Povratak je sada ponovni deploy iz lokalnih paketa: sadašnji build je `C:\build\remotely-net10-prod3`, a jučerašnji
+  `C:\build\remotely-net10-prod`. Paketi idu u novu mapu, pa slijedi `Switch-RemotelySite.ps1`. `Content` mora ostati 0943,
+  inače se agenti "ažuriraju" natrag. I povratak restarta server.
+- Staging (`Remotely-Test`, poolovi, `C:\sites\remotely-test-net10c`, `C:\sites\remotely-test-token`) bez baze ne radi. Za
+  sljedeće izdanje agenta radi se iznova iz svježe kopije produkcijske baze.
 - Agenti 0943 su se vratili (501 online). 113 zaglavljenih starih agenata nije, vidi gore.
 
 ## 9. Tokmak usklađuje Remotely ID (2026-10-29)
