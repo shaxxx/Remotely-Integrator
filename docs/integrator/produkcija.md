@@ -151,6 +151,19 @@ update check due to previous failure"). Agent radi i spaja se normalno. Ažurira
 restarta servisa ili stroja. U 13:40 je takvih online 24, od toga MLJET-PC na Windows 7, koji očekivano ostaje na starom
 agentu.
 
+Restart servisa (SYSTEM zadatak, `agent-restart-update.ps1` kao kod IVICE) na TANJA u 13:45 i na 22 stroja u 13:48-13:52.
+Do 14:03 na 0943 je prešlo 11 od 23. Ostali:
+- Restart je prošao, ali preuzimanje opet pada na strani klijenta, pa je agent ponovo na 24 h čekanja:
+  - SERVER-2025 (Dajana Krmek) i SERVER2023 (DIC): istek TCP spajanja (21 s) pri preuzimanju instalera, iako se agent
+    normalno spaja; isto se dogodilo i u 10:10;
+  - DESKTOP-3470QS1: "connection was aborted by the software in your host machine" na 106 od 139 MB, kao i u 10:45.
+- Zadatak je prekinut prije prvog retka (0x41306) ili ga nema: SERVIS-PC, DESKTOP-BIAGJVC i PC (Avast), KASAZICARA.
+  Vjerojatno antivirus zaustavlja `powershell -ExecutionPolicy Bypass` iz zadatka.
+- DESKTOP-VEIEN4B vraća izlaz bez oznaka naredbe. KNEZ-K1, KORISNIK, KORITPC-01 i NATURA-KASA su bili offline.
+
+U 13:57:03-17 server je javio 36 grešaka "max pool size was reached" na `DeviceHeartbeat`. Dio agenata se odspojio na
+~20 s i vratio. Proces sitea se nije restartao (radi od 13:11:19). Uzrok nije utvrđen.
+
 Novi agent (0943) i server imaju isti obrazac (`UpdateDownloader` timeout 6 h). Za sljedeće izdanje agenta server bi trebao
 ograničiti čekanje i pratiti prekid zahtjeva.
 
