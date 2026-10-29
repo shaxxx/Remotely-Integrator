@@ -62,13 +62,18 @@ namespace Remotely.Agent.Services
                 switch (shell)
                 {
                     case ScriptingShell.WinPS:
-                        session.Init(shell, "powershell.exe", "\r\n", senderConnectionId);
+                        // PowerShell 5.1 takes its input and output code page from the console when it
+                        // starts (437 by default), which turned č, ć and đ into c and d both ways, and
+                        // changing it inside the session has no effect.  So it starts in a console that
+                        // is already UTF-8.
+                        session.Init(shell, "cmd.exe", "/d /c \"chcp 65001>nul & powershell.exe\"", "\r\n", senderConnectionId);
                         break;
                     case ScriptingShell.Bash:
-                        session.Init(shell, "bash", "\n", senderConnectionId);
+                        session.Init(shell, "bash", "", "\n", senderConnectionId);
                         break;
                     case ScriptingShell.CMD:
-                        session.Init(shell, "cmd.exe", "\r\n", senderConnectionId);
+                        // UTF-8 output (file names with č, ć, đ).  cmd cannot read non-ASCII piped input either way.
+                        session.Init(shell, "cmd.exe", "/d /k chcp 65001>nul", "\r\n", senderConnectionId);
                         break;
                     default:
                         throw new ArgumentException($"Unknown external scripting shell type: {shell}");
@@ -160,20 +165,24 @@ namespace Remotely.Agent.Services
             return partialResult;
         }
 
-        private void Init(ScriptingShell shell, string shellProcessName, string lineEnding, string connectionId)
+        private void Init(ScriptingShell shell, string shellProcessName, string arguments, string lineEnding, string connectionId)
         {
             _shell = shell;
             _lineEnding = lineEnding;
             SenderConnectionId = connectionId;
 
-            var psi = new ProcessStartInfo(shellProcessName)
+            var utf8 = new UTF8Encoding(false);
+            var psi = new ProcessStartInfo(shellProcessName, arguments)
             {
                 WindowStyle = ProcessWindowStyle.Hidden,
                 Verb = "RunAs",
                 UseShellExecute = false,
                 RedirectStandardError = true,
                 RedirectStandardInput = true,
-                RedirectStandardOutput = true
+                RedirectStandardOutput = true,
+                StandardInputEncoding = utf8,
+                StandardOutputEncoding = utf8,
+                StandardErrorEncoding = utf8
             };
 
             var connectionInfo = _configService.GetConnectionInfo();
@@ -214,7 +223,8 @@ namespace Remotely.Agent.Services
 
         private void RemoveSession()
         {
-            ShellProcess?.Kill();
+            // The whole tree: on Windows the shell runs under cmd.exe (see GetCurrent).
+            ShellProcess?.Kill(true);
             _sessions.TryRemove(SenderConnectionId, out _);
         }
 
