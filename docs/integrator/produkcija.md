@@ -158,7 +158,12 @@ Do 14:03 na 0943 je prešlo 11 od 23. Ostali:
     normalno spaja; isto se dogodilo i u 10:10;
   - DESKTOP-3470QS1: "connection was aborted by the software in your host machine" na 106 od 139 MB, kao i u 10:45.
 - Zadatak je prekinut prije prvog retka (0x41306) ili ga nema: SERVIS-PC, DESKTOP-BIAGJVC i PC (Avast), KASAZICARA.
-  Vjerojatno antivirus zaustavlja `powershell -ExecutionPolicy Bypass` iz zadatka.
+  Vjerojatno antivirus zaustavlja `powershell -ExecutionPolicy Bypass` iz zadatka. U 14:17 je isti restart preko
+  `cmd.exe` i `.cmd` datoteke (`agent-restart-cmd.ps1`: `net stop`, čekanje izlaska agenta, `net start`) prošao na
+  SERVIS-PC, PC i KASAZICARA, a sva tri su do 14:19 na 0943. DESKTOP-BIAGJVC (OŠ Skalice, Avast) se nakon zaustavljanja
+  servisa u 14:17:50 nije vratio ni do 14:27. Vjerojatno je antivirus prekinuo `.cmd` između `net stop` i `net start`, pa
+  servis stoji. Vraća ga restart računala (servis je automatski) ili ručno pokretanje servisa "Remotely Service". Restart
+  preko `cmd`-a je prvi izbor za sljedeći put, ali ne na strojevima s Avastom.
 - DESKTOP-VEIEN4B vraća izlaz bez oznaka naredbe. KNEZ-K1, KORISNIK, KORITPC-01 i NATURA-KASA su bili offline.
 
 U 13:57:03-17 server je javio 36 grešaka "max pool size was reached" na `DeviceHeartbeat`. Dio agenata se odspojio na
