@@ -10,6 +10,8 @@ public class TypedTextTests
     [DataRow("čćđ ČĆĐ žš @€", "čćđ ČĆĐ žš @€")]
     [DataRow("a{+}b{^}c{%}d{~}e{(}f{)}", "a+b^c%d~e(f)")]
     [DataRow("{{}x{}}{[}y{]}", "{x}[y]")]
+    [DataRow("{{}{}}{{}", "{}{")]
+    [DataRow("kraj\r", "kraj\r")]
     [DataRow("{ENTER}", "{ENTER}")]
     [DataRow("a{", "a{")]
     [DataRow("a{b", "a{b")]

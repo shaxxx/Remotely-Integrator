@@ -15,6 +15,14 @@ namespace Remotely.Desktop.Win.Services
 {
     public class KeyboardMouseInputWin : IKeyboardMouseInput
     {
+        // Modifier flags in the high byte of VkKeyScan's result.
+        private static readonly (int Flag, VirtualKey Key)[] _keyScanModifiers =
+        {
+            (0x100, VirtualKey.SHIFT),
+            (0x200, VirtualKey.CONTROL),
+            (0x400, VirtualKey.MENU)
+        };
+
         private readonly ConcurrentQueue<Action> _inputActions = new();
         private CancellationTokenSource _cancelTokenSource;
         private volatile bool _inputBlocked;
@@ -287,7 +295,7 @@ namespace Remotely.Desktop.Win.Services
             }
 
             var key = (VirtualKey)(keyScan & 0xff);
-            var modifiers = new[] { (Flag: 0x100, Key: VirtualKey.SHIFT), (Flag: 0x200, Key: VirtualKey.CONTROL), (Flag: 0x400, Key: VirtualKey.MENU) }
+            var modifiers = _keyScanModifiers
                 .Where(x => (keyScan & x.Flag) != 0)
                 .Select(x => x.Key)
                 .ToArray();
@@ -478,7 +486,7 @@ namespace Remotely.Desktop.Win.Services
                     {
                         Logger.Write("Desktop switch failed during input processing.");
 
-                        // Thread likely has hooks in current desktop.  SendKeys will create one with no way to unhook it.
+                        // Thread likely has hooks in current desktop.  SendKeys (used for text before 2026) created one with no way to unhook it.
                         // Start a new thread for processing input.
                         StartInputProcessingThread();
                         return;

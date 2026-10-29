@@ -631,7 +631,8 @@ export function ApplyInputHandlers() {
     // SendKeys on the desktop treats these characters as commands; braces make them literal.
     const escapeSendKeys = (text: string) => text.replace(/[+^%~(){}[\]]/g, "{$&}");
 
-    // The desktop types the text with SendKeys, which leaves a hook on its input thread.
+    // Desktops before 2026 (all of them in the field) type the text with SendKeys, which
+    // leaves a hook on their input thread.
     // The next input action then fails the desktop switch and is dropped while the
     // thread is replaced, so a Shift action follows the text to absorb that drop; when
     // it does run it is harmless.  SendKeys also releases Shift on the remote computer,
