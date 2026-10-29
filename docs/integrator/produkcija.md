@@ -147,6 +147,25 @@ Oporavak:
 Novi agent (0943) i server imaju isti obrazac (`UpdateDownloader` timeout 6 h). Za sljedeće izdanje agenta server bi trebao
 ograničiti čekanje i pratiti prekid zahtjeva.
 
+**Restart servera izbacuje zaglavljene stare agente.** Stari agent se nakon spajanja vraća u `HandleConnection`, gdje čeka
+`CheckForUpdates()`, a ta provjera čeka zaglavljeno preuzimanje. Automatsko ponovno spajanje nema. Dok veza traje, agent
+radi. Kad se server restarta, agent se ne može ponovno spojiti dok preuzimanje ne završi (vjerojatno 6 h od početka, oko
+16:10) ili dok se stroj ili servis ne restartaju. Prebacivanje mapa u 13:11 (ispod) tako je izbacilo 113 starih agenata. Za
+sljedeći put: restart servera tek kad nema zaglavljenih starih agenata.
+
+### Preimenovanje mapa sitea (13:11)
+
+- Stari .NET 5 site premješten je iz `C:\sites\remotely` u `C:\sites\remotely.net5`, zajedno s kopijom `token`.
+- `C:\sites\remotely` je sada produkcija: kopija `remotely-net10b`, 1399 datoteka s istim vremenima, pa je i ETag paketa
+  isti.
+- Aplikacija `/token` ostala je u `C:\sites\remotely\token`, kao prije prelaska. Pool `.NET Core` (dijele ga i Identity i
+  Operativa web) nije diran.
+- Prebacivanje `Switch-RemotelySite.ps1` trajalo je 8 s:
+  - ETag x64 `"1dd678249020fb0"` i x86 `"1dd67826113854a"` su nepromijenjeni;
+  - `/`, `/RemoteControl` i `/token` vraćaju 200.
+- Povratak je `C:\sites\remotely-net10b`, a prije njega `C:\sites\remotely-net10`.
+- Agenti 0943 su se vratili (501 online). 113 zaglavljenih starih agenata nije, vidi gore.
+
 ## 9. Tokmak usklađuje Remotely ID (2026-10-29)
 
 Spec `docs/superpowers/specs/2026-10-29-tokmak-remotely-reid-design.md`, plan
