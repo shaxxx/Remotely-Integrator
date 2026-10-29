@@ -109,7 +109,7 @@ export function ApplyInputHandlers() {
         }
 
         navigator.clipboard.readText().then(text => {
-            ViewerApp.MessageSender.SendClipboardTransfer(text, true);
+            sendTypedText(text, false);
             ShowMessage("Clipboard sent!");
         }, reason => {
             alert("Unable to read clipboard.  Please check your permissions.");

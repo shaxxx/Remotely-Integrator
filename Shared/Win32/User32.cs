@@ -1292,7 +1292,8 @@ namespace Remotely.Shared.Win32
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool LockWorkStation();
 
-        [DllImport("user32.dll")]
+        // Unicode: the ANSI version turns č and ć into c on a Western European code page.
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern short VkKeyScan(char ch);
 
         [DllImport("user32.dll")]

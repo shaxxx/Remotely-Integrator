@@ -5,9 +5,10 @@ using Remotely.Shared.Utilities;
 using Remotely.Shared.Win32;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 using static Remotely.Shared.Win32.User32;
 
 namespace Remotely.Desktop.Win.Services
@@ -227,13 +228,97 @@ namespace Remotely.Desktop.Win.Services
             {
                 try
                 {
-                    SendKeys.SendWait(transferText);
+                    // SendInput instead of SendKeys: SendKeys left a hook on this thread, so the
+                    // next input action failed the desktop switch and was dropped.
+                    foreach (var character in ParseTypedText(transferText))
+                    {
+                        var inputs = GetCharacterInputs(character);
+                        SendInput((uint)inputs.Length, inputs, INPUT.Size);
+                    }
                 }
                 catch (Exception ex)
                 {
                     Logger.Write(ex);
                 }
             });
+        }
+
+        /// <summary>
+        /// The viewer sends text in SendKeys syntax: characters that SendKeys treats as
+        /// commands come in braces ("{+}").  Line breaks become '\r', which types Enter.
+        /// </summary>
+        public static IEnumerable<char> ParseTypedText(string text)
+        {
+            for (var i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '{' && i + 2 < text.Length && text[i + 2] == '}')
+                {
+                    yield return text[i + 1];
+                    i += 2;
+                }
+                else if (text[i] == '\r' || text[i] == '\n')
+                {
+                    if (text[i] == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
+                    {
+                        i++;
+                    }
+                    yield return '\r';
+                }
+                else
+                {
+                    yield return text[i];
+                }
+            }
+        }
+
+        // As SendKeys does: the key that types the character on the current layout, with the
+        // Shift, Ctrl and Alt it needs (so Caps Lock applies, which the viewer relies on), or
+        // the Unicode character when the layout has no such key.
+        private static INPUT[] GetCharacterInputs(char character)
+        {
+            var keyScan = VkKeyScan(character);
+            if (keyScan == -1)
+            {
+                return new[]
+                {
+                    GetKeyInput(0, (ScanCodeShort)character, KEYEVENTF.UNICODE),
+                    GetKeyInput(0, (ScanCodeShort)character, KEYEVENTF.UNICODE | KEYEVENTF.KEYUP)
+                };
+            }
+
+            var key = (VirtualKey)(keyScan & 0xff);
+            var modifiers = new[] { (Flag: 0x100, Key: VirtualKey.SHIFT), (Flag: 0x200, Key: VirtualKey.CONTROL), (Flag: 0x400, Key: VirtualKey.MENU) }
+                .Where(x => (keyScan & x.Flag) != 0)
+                .Select(x => x.Key)
+                .ToArray();
+
+            return modifiers.Select(x => GetVirtualKeyInput(x, 0))
+                .Append(GetVirtualKeyInput(key, 0))
+                .Append(GetVirtualKeyInput(key, KEYEVENTF.KEYUP))
+                .Concat(modifiers.Reverse().Select(x => GetVirtualKeyInput(x, KEYEVENTF.KEYUP)))
+                .ToArray();
+        }
+
+        private static INPUT GetVirtualKeyInput(VirtualKey key, KEYEVENTF flags)
+        {
+            var scanCode = (ScanCodeShort)MapVirtualKeyEx((uint)key, VkMapType.MAPVK_VK_TO_VSC, GetKeyboardLayout());
+            return GetKeyInput(key, scanCode, flags);
+        }
+
+        private static INPUT GetKeyInput(VirtualKey key, ScanCodeShort scanCode, KEYEVENTF flags)
+        {
+            var union = new InputUnion()
+            {
+                ki = new KEYBDINPUT()
+                {
+                    wVk = key,
+                    wScan = scanCode,
+                    time = 0,
+                    dwFlags = flags,
+                    dwExtraInfo = GetMessageExtraInfo()
+                }
+            };
+            return new INPUT() { type = InputType.KEYBOARD, U = union };
         }
 
         public void SetKeyStatesUp()
