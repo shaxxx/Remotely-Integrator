@@ -165,6 +165,7 @@ Scenariji na TOKMAKTEST-u (Windows ime `DESKTOP-AD5QSGI`, Proxmox):
 | 2. Krivi ID `6A0B1413-…`, testni Halo | "ne odgovara … ponovno instaliram", "usklađen", 54 s; uređaj pod `60BC4539-…`, postojeći zapis i grupa zadržani |
 | 3. Ponovni testni Halo | Bez instalacije, 13 s, isti proces agenta |
 | 4. Krivi ID `4FB89E36-…`, `Tokmak4.exe Remotely -i … -s false` (SYSTEM) | "ne odgovara … ponovno instaliram", "usklađen"; uređaj pod `60BC4539-…`. Exit 1 zbog tokena (ispod) |
+| 5. Neuspjeh: krivi ID `8ABC9E12-…`, `remote.integrator.hr` → 127.0.0.1 u hosts, `Remotely -i` | Instaler: backup, preuzimanje odbijeno, "Restoring backup"; stari agent ostao (isti ID, 0943, servis radi, 1107 datoteka); Tokmak: "Usklađivanje Remotely ID-a nije uspjelo". Nakon vraćanja hostsa sljedeći Tokmak uskladio na `60BC4539-…` |
 
 Exit 1 u scenariju 4 postoji i od prije, nije posljedica ove izmjene. `RemotelyCommand` odmah nakon instalacije zove
 `UpdateServerToken`, a instaler je token obrisao, pa ide `/token/token/{id}/null`. TokenExtractor za `null` vraća 500 (za
@@ -173,7 +174,7 @@ prazan, a server token postavlja pri spajanju agenta. Vjerojatno je isto objašn
 (`staging-krug2.md`).
 
 Zaostali offline zapisi (testni, briše ih korisnik u web sučelju): `6A0B1413-E82D-4CF2-9E8A-9E3F7E200EA8`,
-`4FB89E36-9E1E-4222-AF49-47CE186C9A63`.
+`4FB89E36-9E1E-4222-AF49-47CE186C9A63`, `8ABC9E12-343F-4D58-9368-3577ACC4D673`.
 
 Check-in i objavu Tokmaka radi korisnik. Izmijenjene datoteke:
 - `Integrator.MachineSetup\RemotelyOptions.cs`;
