@@ -165,7 +165,8 @@ sljedeći put: restart servera tek kad nema zaglavljenih starih agenata.
   - `/`, `/RemoteControl` i `/token` vraćaju 200.
 - Mape `C:\sites\remotely-net10b` i `C:\sites\remotely-net10` te baza `Remotely_Test` obrisane su isti dan (korisnik).
   Povratak je sada ponovni deploy iz lokalnih paketa: sadašnji build je `C:\build\remotely-net10-prod3`, a jučerašnji
-  `C:\build\remotely-net10-prod`. Paketi idu u novu mapu, pa slijedi `Switch-RemotelySite.ps1`. `Content` mora ostati 0943,
+  `C:\build\remotely-net10-prod`. Paketi idu u novu mapu, pa slijedi `Switch-RemotelySite.ps1`. `C:\deploy` je obrisan,
+  pa se skripte (`Utilities\Integrator\`) šalju skillom zajedno s paketom. `Content` mora ostati 0943,
   inače se agenti "ažuriraju" natrag. I povratak restarta server.
 - Staging (`Remotely-Test`, poolovi, `C:\sites\remotely-test-net10c`, `C:\sites\remotely-test-token`) bez baze ne radi. Za
   sljedeće izdanje agenta radi se iznova iz svježe kopije produkcijske baze.
