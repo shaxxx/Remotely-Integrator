@@ -144,6 +144,13 @@ Oporavak:
 - Ispravan redoslijed je zaustaviti servis, pričekati ili ugasiti proces, obrisati 0-bajtni zip i pokrenuti servis.
   Tako je IVICA ažurirana u 12:13.
 
+Druga skupina, provjereno na TANJA (OLEANDRA) oko 13:45: agent je u 10:10:39 našao ažuriranje, a preuzimanje
+`Remotely_Installer.exe` je u 10:11:00 palo na isteku TCP spajanja, dok se server još dizao. Neuspjeh postavlja
+`_lastUpdateFailure` (polje u memoriji, `UpdaterWin.cs`), pa svako ponovno spajanje 24 h preskače ažuriranje ("Skipping
+update check due to previous failure"). Agent radi i spaja se normalno. Ažurira se sam sutra oko 10:11, a odmah nakon
+restarta servisa ili stroja. U 13:40 je takvih online 24, od toga MLJET-PC na Windows 7, koji očekivano ostaje na starom
+agentu.
+
 Novi agent (0943) i server imaju isti obrazac (`UpdateDownloader` timeout 6 h). Za sljedeće izdanje agenta server bi trebao
 ograničiti čekanje i pratiti prekid zahtjeva.
 
