@@ -65,3 +65,64 @@ Korisnik je napravio backup i provjeru (`RESTORE VERIFYONLY`): uspješno.
 - NAPOLEON (Remotely ID `4B9ECE6E-…`): `sql-instances`, `integrator-databases`, `sql-connections` rade; stroj nema SQL Server.
 - NAPOLEON se u CEZAR-u vodi pod dva GUID-a (`DC5395D1-…`, `C861A71E-…`), a nijedan nije Remotely ID, pa ga skill po CEZAR GUID-u ne nalazi. To je postojeće stanje podataka, ne posljedica prelaska.
 - CLOUD: `sql-instances` i `integrator-databases` rade (MSSQLSERVER 17.0.1000.7).
+
+## 8. Popravci nakon prelaska i novi agent (2026-10-29)
+
+### Uzroci
+
+| Problem | Uzrok | Popravak |
+|---|---|---|
+| `č`/`ć` s fizičke tipkovnice stižu kao `c`, `đ` kao `d`, `Đ` se gubi | desktop pretvara znak preko `VkKeyScan` u ANSI inačici; na računalima s kodnom stranicom 1252 best-fit (IVICATEST: ACP 1252) | viewer: znakovi izvan ASCII-ja tipkaju se kao tekst; desktop: `VkKeyScan` u Unicode inačici |
+| AltGr znakovi (`@ € { } [ ] \ \|`) ne rade, AltGr+V lijepi | desktop ne poznaje `AltGraph`, a `@` dobiva kao Ctrl+Alt+V | viewer: AltGr znakovi kao tekst, `AltGraph` se ne šalje |
+| tipka ili klik iza tipkanog teksta se gubi (i "Type Clipboard") | `SendKeys` ostavlja hook na ulaznoj niti, sljedeća radnja padne na promjeni desktopa | desktop: tekst preko `SendInput` na istoj niti; viewer: escape i apsorber i za "Type Clipboard" |
+| `ExecuteCommand` vraća 404 nakon 30 s | agent zove `ScriptResultViaApi(requestID)`, server je deklarira s dva argumenta | server bilježi rezultat pri `POST /api/ScriptResults` |
+| kartica uređaja u webu pada kad stroj dođe online | kartica se iscrta prije učitavanja korisnika; `GetDeviceGroups(null)` vraćao `null` | `GetDeviceGroups` vraća prazan niz |
+| naredbe gube `č`/`ć`/`đ` (ulaz i izlaz) | agent piše/čita u 1252, PowerShell 5.1 u 437 (kodna stranica konzole pri pokretanju) | PowerShell se pokreće u UTF-8 konzoli, CMD uz `chcp 65001`, agent u UTF-8 |
+
+Nije mijenjano: odbijanje "already connected" (štiti od klonova s istim ID-om; agent ponovi za ~90 s), N1, izlazni kod instalera. CMD i dalje ne čita ne-ASCII ulaz (ograničenje cmd-a).
+
+### Koraci
+
+| Vrijeme | Korak |
+|---|---|
+| 09:00 | IVICATEST: stari agent i svi pokusni ostaci uklonjeni, novi agent 2026.10.29.0852 (isti ID) |
+| 09:26 | produkcijski viewer: `InputEventHandlers.js(.map)` zamijenjeni (`*.pre-k37` kopije) |
+| 09:32 | server 2026.10.29.0926 (`c5eb3927`) u `C:\sites\remotely-net10b`, prebacivanje ~40 s; povratak: `C:\sites\remotely-net10` |
+| 09:45 | IVICATEST ažuriran na 2026.10.29.0943 (`5760c7e3`) istim putem kao automatsko ažuriranje |
+| 09:50 | `Content`: `Remotely-Win10-x64/x86.zip` = 0943; stari paketi u `C:\deploy\content-2021`; instaler nepromijenjen |
+
+Paketi 0943 (`C:\build\remotely-net10-prod4`):
+
+```
+357ea8dea5074412d83b56f4b217c9cf4ca67d74cb29292473a2a75fe736c77c  Remotely-Agent-x64.zip
+2efe90545976f2aa1cea7431de99115645dfed68469cfa555bddd843c04b55d9  Remotely-Agent-x86.zip
+```
+
+Povratak paketa: kopirati `C:\deploy\content-2021\*.zip` natrag u `Content`; agenti se tada "ažuriraju" na 2021.
+
+### Prvo automatsko ažuriranje (NAPOLEON)
+
+Restart NAPOLEON-a u 09:52 (stari agent 2021, servis "Automatic (Delayed Start)"). Instaler pokrenut 09:54:56, sigurnosna
+kopija, novi servis 09:55:10, online s 2026.10.29.0943 u 09:55:17. Isti DeviceID, token ponovno postavljen, `etag.txt` = novi
+ETag ("Version is current"), naredbe preko skilla rade, `č ć đ Đ ž` u izlazu ispravni. U 09:55 je na 0943 već 16 uređaja.
+
+### Ažuriranje flote (stanje 10:30)
+
+- 10:0x korisnik zaustavio server (app pool i site); pri ponovnom pokretanju pool je ostao zaustavljen (pokretanje sitea ne
+  pokreće pool) pa je IIS vraćao 503 do 10:11.
+- Stari agent pri svakom ponovnom spajanju provjerava ažuriranje, pa je nakon povratka servera ~650 agenata odjednom ušlo u red.
+  Server pušta 10 preuzimanja istodobno (`MaxConcurrentUpdates`), čekanje u redu ~20 min, ~12-14 ažuriranja u minuti.
+  10:30: 248 uređaja na 0943, 401 online na 2021, 0 grešaka.
+- Restart servisa dok agent čeka u redu prekida preuzimanje; sljedeći pokušaj može pasti na zaključanom `RemotelyUpdate.zip`,
+  nakon čega stari agent 24 h ne pokušava (do sljedećeg restarta servisa). Viđeno na IVICA.
+
+### Remotely ID i machine GUID (NAPOLEON)
+
+Tokmak instalira agent s `-deviceuuid` = MachineGuidId iz Integrator Supporta, ali instalaciju preskače ako je agent već
+instaliran. NAPOLEON je imao agent s ID-om `4B9ECE6E-…` (ConnectionInfo iz 01/2024), a support vraća `DC5395D1-…`, pa ga
+Operativa (`GET api/Devices/{MachineGuidId}`) nije nalazila. Ažuriranje ID nije mijenjalo (instaler zadržava DeviceID).
+
+Usklađivanje (10:27): `POST /api/devices` (ID = GUID, alias = GUID, grupa Operativa), na stroju `ConnectionInfo.DeviceID = GUID`,
+token prazan, restart servisa (SYSTEM zadatak s odgodom 5 s). NAPOLEON online pod `DC5395D1-…` za 4 s; stari zapis `4B9ECE6E-…`
+offline (briše ga korisnik u web sučelju). GUID se na stroju čita kao u Tokmaku: named pipe `integrator`, pozdrav
+`Integrator Support`, upit `machineguidid` (2 bajta duljine, UTF-16LE).
