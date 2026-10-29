@@ -631,16 +631,28 @@ export function ApplyInputHandlers() {
     // SendKeys on the desktop treats these characters as commands; braces make them literal.
     const escapeSendKeys = (text: string) => text.replace(/[+^%~(){}[\]]/g, "{$&}");
 
+    // The desktop types the text with SendKeys, which leaves a hook on its input thread.
+    // The next input action then fails the desktop switch and is dropped while the
+    // thread is replaced, so a Shift action follows the text to absorb that drop; when
+    // it does run it is harmless.  SendKeys also releases Shift on the remote computer,
+    // so while the user holds Shift it is pressed again (twice, the first may be dropped).
+    const sendTypedText = (text: string, shiftHeld: boolean) => {
+        ViewerApp.MessageSender.SendClipboardTransfer(escapeSendKeys(text), true);
+        if (shiftHeld) {
+            ViewerApp.MessageSender.SendKeyDown("Shift");
+            ViewerApp.MessageSender.SendKeyDown("Shift");
+        }
+        else {
+            ViewerApp.MessageSender.SendKeyUp("Shift");
+        }
+    };
+
     const flushTouchText = (text: string) => {
         resetTouchField();
         if (ViewerApp.ViewOnlyMode || !text) {
             return;
         }
-        ViewerApp.MessageSender.SendClipboardTransfer(escapeSendKeys(text), true);
-        // The desktop types the text with SendKeys, which leaves a hook on its input thread.
-        // The next input action then fails the desktop switch and is dropped while the
-        // thread is replaced.  This key-up absorbs that drop; when it does run it is harmless.
-        ViewerApp.MessageSender.SendKeyUp("Shift");
+        sendTypedText(text, false);
     };
 
     resetTouchField();
@@ -797,6 +809,32 @@ export function ApplyInputHandlers() {
         ViewerApp.SessionRecorder.DownloadVideo();
     });
 
+    // The desktop's key path converts a character to the remote computer's ANSI code
+    // page, so on Western European Windows č and ć arrive as c and đ as d, and it cannot
+    // type AltGr characters (@, €, { on the Croatian layout) at all.  Those characters
+    // are typed as text instead, and keysTypedAsText holds the codes of keys whose last
+    // press went as text, so that their key-ups are not sent.
+    const keysTypedAsText = new Set<string>();
+    const isTypedAsText = (e: KeyboardEvent) => {
+        if (e.key.length !== 1 || e.metaKey) {
+            return false;
+        }
+        if (e.ctrlKey || e.altKey) {
+            // AltGr arrives as Ctrl+Alt; with a letter, digit or space it is a shortcut.
+            return e.ctrlKey && e.altKey && !/[\sa-z0-9]/i.test(e.key);
+        }
+        return e.key.charCodeAt(0) > 0x7f;
+    };
+    // SendKeys types the case it is given and the remote Caps Lock then flips the letter,
+    // so with Caps Lock on (assumed on for both computers) the case is flipped first.
+    const caseForCapsLock = (e: KeyboardEvent) => {
+        if (!e.getModifierState("CapsLock")) {
+            return e.key;
+        }
+        const flipped = e.key === e.key.toUpperCase() ? e.key.toLowerCase() : e.key.toUpperCase();
+        return flipped.length === 1 ? flipped : e.key;
+    };
+
     window.addEventListener("keydown", function (e) {
         if (document.querySelector("input:focus") || document.querySelector("textarea:focus")) {
             return;
@@ -807,6 +845,17 @@ export function ApplyInputHandlers() {
         if (!e.ctrlKey || !e.shiftKey || e.key.toLowerCase() != "i") {
             e.preventDefault();
         }
+        // The desktop has no key for AltGraph.  Sending it only adds an input action,
+        // and right after AltGr text that action makes the desktop drop the next key.
+        if (e.key === "AltGraph") {
+            return;
+        }
+        if (isTypedAsText(e)) {
+            keysTypedAsText.add(e.code);
+            sendTypedText(caseForCapsLock(e), e.shiftKey);
+            return;
+        }
+        keysTypedAsText.delete(e.code);
         ViewerApp.MessageSender.SendKeyDown(e.key);
     });
     window.addEventListener("keyup", function (e) {
@@ -817,10 +866,14 @@ export function ApplyInputHandlers() {
         if (ViewerApp.ViewOnlyMode) {
             return;
         }
+        if (e.key === "AltGraph" || keysTypedAsText.delete(e.code)) {
+            return;
+        }
         ViewerApp.MessageSender.SendKeyUp(e.key);
     });
 
     window.addEventListener("blur", () => {
+        keysTypedAsText.clear();
         resetTouchState();
         if (ViewerApp.ViewOnlyMode) {
             return;
